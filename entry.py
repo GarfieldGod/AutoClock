@@ -150,6 +150,11 @@ Auto-Clock - 自动打卡工具
                 elif operation == Key.ConnectNetwork:
                     # 对于联网操作，通常不需要延迟
                     ok, error = connect_network()
+                    # 联网后等待10秒，确保网络已经稳定连接
+                    if ok:
+                        Log.info("网络连接成功，等待10秒确保网络稳定...")
+                        time.sleep(10)
+                        Log.info("网络稳定等待完成")
                 else:
                     error = f"No operation specified for: {operation}"
 

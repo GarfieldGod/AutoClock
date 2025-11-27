@@ -138,9 +138,24 @@ class AutoClock:
             if not ret:
                 Log.info(f"Captcha failed, Always retry: {self.always_retry}")
                 if self.always_retry:
+                    round_count = 0
                     while not ret:
+                        round_count += 1
+                        # 每次auto_captcha调用已经是一轮完整的尝试(captcha_attempts次)
+                        # 一轮失败后，重启浏览器进行新一轮尝试
+                        Log.info(f"第{round_count}轮尝试失败(每轮{self.captcha_attempts}次)，重启浏览器进行新一轮尝试...")
+                        self.quit()
+                        time.sleep(2)
+                        try:
+                            self.driver = self.create_driver()
+                            ret_login = self.auto_login()
+                            Log.info(f"重启浏览器后登录结果: {format(ret_login)}")
+                        except Exception as e:
+                            Log.error(f"重启浏览器失败: {e}")
+                            return False, f"重启浏览器失败: {e}"
+                        
                         ret, error = self.auto_captcha()
-                        Log.info(f"Captcha retry: {format(ret)}, error: {error}")
+                        Log.info(f"第{round_count + 1}轮Captcha结果: {format(ret)}, error: {error}")
                 else:
                     return ret, error
             return self.do_clock()
