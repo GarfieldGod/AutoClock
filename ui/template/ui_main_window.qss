@@ -1,0 +1,102 @@
+#Content {
+    background-color: transparent;
+}
+
+#Space {
+    background-color: transparent;
+}
+
+#TitleBar {
+    background-color: transparent;
+}
+
+#Navigation {
+    background-color: transparent;
+    border: none;
+    outline: none;
+    margin-left: 10px;
+}
+
+#Navigation::item {
+    background-color: transparent;
+    color: #333;
+    selection-background-color: transparent;
+    selection-color: #333;
+}
+
+#Navigation::item:hover {
+    background-color: transparent;
+}
+
+#navigation_text {
+    font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+    color: gray;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+#title_label {
+    font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+    font-weight: bold;
+    font-size: 20px;
+    color: gray;
+    left: 10px;
+    padding: 0 5px 0 5px;
+}
+
+#title_desc {
+    font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+    color: gray;
+    padding: 0 5px 0 25px;
+}
+
+#btn_minimize, #btn_maximize, #btn_close {
+    background-color: transparent;
+    border: none;
+    outline: none;
+}
+
+#close_btn {
+    background-color: white;
+    font-size: 16px;
+    border: 1px solid #bbbbbb;
+    border-radius: 10px;
+}
+
+#close_btn:hover {
+    background-color: #e74c3c;
+}
+
+#close_btn:pressed {
+    background-color: #c0392b;
+}
+
+#min_btn {
+    background-color: white;
+    font-size: 16px;
+    border: 1px solid #bbbbbb;
+    border-radius: 10px;
+}
+
+#min_btn:hover {
+    background-color: #34495e;
+}
+
+#min_btn:pressed {
+    background-color: #1a252f;
+}
+
+#max_btn {
+    background-color: white;
+    font-size: 16px;
+    border: 1px solid #bbbbbb;
+    border-radius: 10px;
+}
+
+#max_btn:hover {
+    background-color: #34495e;
+}
+
+#max_btn:pressed {
+    background-color: #1a252f;
+}
