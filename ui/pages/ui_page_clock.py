@@ -1,34 +1,51 @@
-from PyQt5.QtWidgets import QWidget, QLineEdit, QPushButton, QCheckBox, QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, \
+from PyQt5.QtWidgets import QWidget, QLineEdit, QPushButton, QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, \
     QApplication
 
+from src.utils.const import Key
+from ui.pages.auto_clock_window import AutoClockPageContent, AutoClockContainer
 from ui.pages.custom_style import get_group_css
-from ui.template.ui_page import PageContent, Container
+from ui.pages.custom_widget import LineEdit, CheckBox
 from src.ui.ui_message import MessageBox
 from src.utils.log import Log
 from src.utils.utils import Utils
 
-class ClockPage(PageContent):
+class ClockPage(AutoClockPageContent):
     # show_grid = True
     def __init__(self, y, x):
         super(ClockPage, self).__init__(y, x)
 
     def init_container(self):
-        user = UserInfoContainer(3, 3)
+        user_width = 3
+        user_height = 2
+        user = UserInfoContainer(user_width, user_height)
         self.add_container(user, 0,0)
 
-        web = WebDriverContainer(6,3)
-        self.add_container(web, 3,0)
-
         cap = CaptchaContainer(3,3)
-        self.add_container(cap, 0, 3)
+        self.add_container(cap, user_height, 0)
 
-class UserInfoContainer(Container):
+        web = WebDriverContainer(6 - user_width,user_height)
+        self.add_container(web, 0,user_width)
+
+        self.input_save_widget = [
+            user.user_name,
+            user.user_password,
+
+            cap.captcha_retry_times,
+            cap.captcha_tolerance_angle,
+            cap.always_retry_check_box,
+            cap.show_web_page,
+
+            web.driver_path
+        ]
+
+
+class UserInfoContainer(AutoClockContainer):
     def __init__(self, x, y):
         super(UserInfoContainer, self).__init__(x, y)
         self.global_layout = QVBoxLayout()
 
-        self.user_name = QLineEdit()
-        self.user_password = QLineEdit()
+        self.user_name = LineEdit(Key.UserName)
+        self.user_password = LineEdit(Key.UserPassword)
         self.user_password.setEchoMode(QLineEdit.Password)
         self.show_password_btn = QPushButton()
 
@@ -80,11 +97,11 @@ class UserInfoContainer(Container):
             self.show_password_btn.setText("🔒")
             self.show_password_btn.setToolTip("显示密码")
 
-class WebDriverContainer(Container):
+class WebDriverContainer(AutoClockContainer):
     def __init__(self, x, y):
         super(WebDriverContainer, self).__init__(x, y)
 
-        self.driver_path = QLineEdit()
+        self.driver_path = LineEdit(Key.DriverPath)
         self.download_driver_btn = QPushButton()
 
         self.init_ui_format()
@@ -138,18 +155,15 @@ class WebDriverContainer(Container):
             self.download_driver_btn.setText("⬇")
             self.download_driver_btn.setToolTip("自动下载匹配Driver")
 
-class CaptchaContainer(Container):
+class CaptchaContainer(AutoClockContainer):
     def __init__(self, x, y):
         super(CaptchaContainer, self).__init__(x, y)
 
-        self.captcha_retry_times = QLineEdit()
-        self.notification_email = QLineEdit()
-        self.captcha_tolerance_angle = QLineEdit()
+        self.captcha_retry_times = LineEdit(Key.CaptchaRetryTimes)
+        self.captcha_tolerance_angle = LineEdit(Key.CaptchaToleranceAngle)
 
-        self.always_retry_check_box = QCheckBox()
-        self.send_email_success = QCheckBox()
-        self.send_email_failed = QCheckBox()
-        self.show_web_page = QCheckBox()
+        self.always_retry_check_box = CheckBox(Key.AlwaysRetry)
+        self.show_web_page = CheckBox(Key.ShowWebPage)
 
         self.init_ui_layout()
 

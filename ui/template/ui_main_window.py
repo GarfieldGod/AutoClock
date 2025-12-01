@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
 
             # elements
             self.central_widget = QWidget()
-            self.app_icon = AppIconArea(50,50)
+            self.app_icon = AppIconArea(100,100)
             self.navigation = NavigationArea(self.navigation_width)
             self.title_bar = TitleBarArea(
                 title_text=self.title_text,

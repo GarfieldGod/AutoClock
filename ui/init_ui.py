@@ -1,7 +1,9 @@
 import sys
 
+from PyQt5.QtCore import QSize
 from PyQt5.QtWidgets import QApplication
 
+from ui.pages.auto_clock_window import AutoClockWindow
 from ui.pages.ui_page_notification import NotificationPage
 from ui.pages.ui_page_clock import ClockPage
 from ui.pages.ui_page_task import SystemTaskPage
@@ -23,11 +25,7 @@ def init_page_list(w):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MainWindow(
-        title_text="Auto Clock",
-        title_desc="--automatically execute the tasks",
-        show_max_button=False
-    )
+    window = AutoClockWindow()
     init_page_list(window)
     window.show()
     sys.exit(app.exec_())

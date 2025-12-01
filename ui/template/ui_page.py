@@ -149,7 +149,6 @@ class PageContent(QWidget):
                      """)
                 placeholder.setVisible(self.show_grid)
                 self.grid.addWidget(placeholder, r, c)
-                placeholder.setFixedSize(placeholder.size())
 
         self.init_container()
 
@@ -165,6 +164,15 @@ class PageContent(QWidget):
         if not (1 <= row_span <= self.rows - pos_row and 1 <= col_span <= self.columns - pos_col):
             print(f"警告: 跨度 ({row_span}x{col_span}) 在位置 ({pos_row}, {pos_col}) 处超出网格范围。剩余：高{self.rows - pos_row} 宽{self.columns - pos_col}。")
             return
+
+        container.setSizePolicy(
+            container.sizePolicy().horizontalPolicy() & ~container.sizePolicy().Expanding,
+            container.sizePolicy().verticalPolicy() & ~container.sizePolicy().Expanding
+        )
+        container.setSizePolicy(
+            container.sizePolicy().horizontalPolicy() | container.sizePolicy().Ignored,
+            container.sizePolicy().verticalPolicy() | container.sizePolicy().Ignored
+        )
 
         self.grid.addWidget(container, pos_row, pos_col, row_span, col_span)
         print(f"在第{pos_row}行，第{pos_col}列，新增container，占用{col_span}列（宽度 {container.size().width()}），{row_span}行（高度 {container.size().height()}）")
