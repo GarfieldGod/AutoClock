@@ -1,9 +1,9 @@
 from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QLabel, QHBoxLayout
 
 from src.utils.const import Key
-from ui.pages.auto_clock_window import AutoClockPageContent, AutoClockContainer
-from ui.pages.custom_style import get_group_css
-from ui.pages.custom_widget import CheckBox, LineEdit
+from ui.main_window.auto_clock_window import AutoClockPageContent, AutoClockContainer
+from ui.custom.custom_style import get_group_css
+from ui.custom.custom_widget import CheckBox, LineEdit
 
 class NotificationPage(AutoClockPageContent):
     # show_grid = True

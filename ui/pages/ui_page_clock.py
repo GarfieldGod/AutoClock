@@ -2,9 +2,9 @@ from PyQt5.QtWidgets import QWidget, QLineEdit, QPushButton, QGroupBox, QVBoxLay
     QApplication
 
 from src.utils.const import Key
-from ui.pages.auto_clock_window import AutoClockPageContent, AutoClockContainer
-from ui.pages.custom_style import get_group_css
-from ui.pages.custom_widget import LineEdit, CheckBox
+from ui.main_window.auto_clock_window import AutoClockPageContent, AutoClockContainer
+from ui.custom.custom_style import get_group_css
+from ui.custom.custom_widget import LineEdit, CheckBox
 from src.ui.ui_message import MessageBox
 from src.utils.log import Log
 from src.utils.utils import Utils

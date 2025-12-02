@@ -87,6 +87,7 @@ class AppPath:
     else:
         ProjectRoot = os.path.abspath(".")
     ConfigJson: str = os.path.join(ProjectRoot, "config.json")
+    UiResourcePath: str = os.path.join(ProjectRoot, "ui", "resource")
 
 @dataclass
 class WebPath:

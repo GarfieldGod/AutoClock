@@ -16,7 +16,9 @@ class AutoClockWindow(MainWindow):
             title_text="Auto Clock",
             title_desc="--automatically execute the tasks",
             show_max_button=False,
-            window_size=QSize(800, 600)
+            window_size=QSize(800, 600),
+            icon_path=os.path.join(AppPath.UiResourcePath, "app_icon.png"),
+            icon_size=QSize(90, 120)
         )
 
         self.load_data_json()
@@ -41,6 +43,10 @@ class AutoClockWindow(MainWindow):
 
     def get_save_data(self, key, default=None):
         return self.save_data.get(key, default)
+
+    def on_window_close(self):
+        self.write_data_json()
+        self.close()
 
     def set_save_data(self, key, value):
         try:

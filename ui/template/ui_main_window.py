@@ -22,7 +22,7 @@ class MainWindow(QMainWindow):
     content_background_color = CustomColor.yellow_247_243_232
 
     def __init__(
-            self, title_text="", title_desc="", icon_path="", window_size=QSize(640, 480),
+            self, title_text="", title_desc="", icon_path="", icon_size=QSize(50,50), window_size=QSize(640, 480),
             show_min_button=True,show_max_button=True,show_close_button=True,
             navigation_width=90, title_bar_height=50, space_width=60,
             round_radius=25, window_padding=0
@@ -33,6 +33,7 @@ class MainWindow(QMainWindow):
             self.title_text = title_text
             self.title_desc = title_desc
             self.icon_path = icon_path
+            self.icon_size = icon_size
             self.window_size = window_size
             self.navigation_width = navigation_width
             self.title_bar_height = title_bar_height
@@ -48,7 +49,7 @@ class MainWindow(QMainWindow):
 
             # elements
             self.central_widget = QWidget()
-            self.app_icon = AppIconArea(100,100)
+            self.app_icon = AppIconArea(icon_path=self.icon_path, size=self.icon_size)
             self.navigation = NavigationArea(self.navigation_width)
             self.title_bar = TitleBarArea(
                 title_text=self.title_text,
@@ -123,7 +124,7 @@ class MainWindow(QMainWindow):
             raise Exception("invalid navigation or page")
 
         navigation_item = QListWidgetItem()
-        navigation_item.setSizeHint(QSize(60, 60))
+        navigation_item.setSizeHint(QSize(60, 80))
         self.navigation.addItem(navigation_item)
         self.navigation.setItemWidget(navigation_item, navigation)
         self.navigation.itemClicked.connect(self.switch_page)
@@ -175,6 +176,9 @@ class MainWindow(QMainWindow):
             self.content.setCurrentIndex(current_index)
         except Exception as e:
             print(e)
+
+    def on_window_close(self):
+        self.close()
 
     def mousePressEvent(self, event):
         title_bar = self.title_bar

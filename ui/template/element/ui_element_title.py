@@ -73,7 +73,7 @@ class TitleBarArea(QWidget):
     def init_close_button(self):
         self.close_btn.setFixedSize(28, 28)
         self.close_btn.setObjectName("close_btn")
-        self.close_btn.clicked.connect(self.this_parent.close)
+        self.close_btn.clicked.connect(self.this_parent.on_window_close)
         self.button_layout.addWidget(self.close_btn)
 
     is_maximized = False

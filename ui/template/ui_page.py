@@ -1,8 +1,10 @@
 from PyQt5.QtCore import Qt, QRectF, QSizeF, QPropertyAnimation, QSize
-from PyQt5.QtGui import QPainter, QPainterPath, QColor
+from PyQt5.QtGui import QPainter, QPainterPath, QColor, QPixmap
 from PyQt5.QtWidgets import QWidget, QLabel, QHBoxLayout, QGridLayout, QSizePolicy, QStackedWidget
 
 from ui.template.ui_custom_color import CustomColor
+from ui.template.ui_custom_function import load_local_image
+
 
 class PageNavigation(QWidget):
     round_radius = 15
@@ -12,11 +14,12 @@ class PageNavigation(QWidget):
     normal_color = QColor(255, 100, 255)
     hover_color = QColor(255, 255, 100)
 
-    def __init__(self, name="",ico=""):
+    def __init__(self, name="",ico="", image_size=QSize(65, 65)):
         super(PageNavigation, self).__init__()
 
         self.name = name
         self.ico = ico
+        self.image_size = image_size
 
         self.content = QStackedWidget()
         self.name_label = QLabel()
@@ -28,9 +31,18 @@ class PageNavigation(QWidget):
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.name_label.setText(self.name)
         self.name_label.setObjectName("navigation_text")
-        self.ico_label.setText(f"Icon_{self.name}")
 
-        self.content.addWidget(self.ico_label)
+        self.ico_label.setFixedSize(self.image_size)
+        self.ico_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        load_local_image(self.ico_label, self.ico, self.name)
+
+        widget_icon = QWidget()
+        layout_icon = QHBoxLayout(widget_icon)
+        layout_icon.setSpacing(0)
+        layout_icon.setContentsMargins(0, 0, 10, 0)
+        layout_icon.addWidget(self.ico_label)
+
+        self.content.addWidget(widget_icon)
         self.content.addWidget(self.name_label)
 
         layout = QHBoxLayout(self)
