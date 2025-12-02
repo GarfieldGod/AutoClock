@@ -9,19 +9,19 @@ from src.ui.ui_message import MessageBox
 from src.utils.const import AppPath, Key
 from src.utils.log import Log
 from src.utils.utils import Utils
+from ui.custom.custom_function import UiFunc
 from ui.custom.custom_style import get_group_css
 from ui.custom.custom_widget import TaskListWidget
 from ui.template.ui_page import PageContent, Container
+from src.ui.ui_system_plan import SystemPlanDialog
 
 # 根据操作系统导入相应的模块
 if platform.system() == 'Windows':
-    from src.ui.ui_windows_plan import WindowsPlanDialog
     from src.ui.ui_windows_login import WindowsLoginDialog
     from src.extend.auto_windows_plan import create_task, delete_scheduled_task
     from src.extend.network_manager import connect_network, disconnect_network
 elif platform.system() == 'Linux':
     from src.ui.ui_linux_login import LinuxLoginDialog
-    from src.ui.ui_linux_plan import LinuxPlanDialog
     from src.extend.auto_linux_plan import create_crontab_task, delete_crontab_task
     from src.extend.auto_linux_network import connect_network, disconnect_network
 else:
@@ -75,7 +75,7 @@ class TaskListContainer(Container):
         layout_container = QVBoxLayout(self)
         layout_container.addWidget(group_system)
 
-    def create_linux_plan(self):
+    def check_linux_credentials(self):
         try:
             credentials_valid = False
             max_attempts = 3
@@ -103,175 +103,49 @@ class TaskListContainer(Container):
                         retry = MessageBox(f"账号验证失败：{status_msg}\n\n是否重新配置账号信息？", "账号验证失败",
                                            buttons=["重试", "取消"])
                         if retry != "重试":
-                            return None
+                            return False
                 else:
                     # 用户取消了登录对话框
-                    return None
+                    return False
 
                 attempt += 1
 
             if not credentials_valid:
                 MessageBox("账号验证失败次数过多，无法创建任务。请确保Linux账号配置正确后重试。")
-                return None
+                return False
 
-            plan_ui = LinuxPlanDialog(self)
-            if plan_ui.exec_() == QDialog.Accepted:
-                value = plan_ui.values()
-                Log.info(f"create linux plan value: {value}")
-                plan_name = value.get(Key.WindowsPlanName)
-                operation = value.get(Key.Operation)
-                trigger_type = value.get(Key.TriggerType)
-                execute_time = value.get(Key.ExecuteTime)
-
-                if not value or not trigger_type or not operation:
-                    return None
-
-                task_id = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
-                is_no_name = plan_name is None or plan_name == Key.Empty or plan_name == Key.DefaultLinuxPlanName
-                task = {
-                    Key.TaskName: Key.DefaultLinuxPlanName if is_no_name else plan_name,
-                    Key.TaskID: task_id,
-                    Key.Operation: operation,
-                    Key.TriggerType: trigger_type,
-                    Key.ExecuteTime: execute_time,
-                    Key.Hour: value.get(Key.Hour),
-                    Key.Minute: value.get(Key.Minute),
-                    Key.DayTimeType: value.get(Key.DayTimeType),
-                    Key.TimeOffset: value.get(Key.TimeOffset, 0)
-                }
-
-                # 处理执行日期
-                execute_day = value.get(Key.ExecuteDay)
-
-                # 处理Weekly类型的多选
-                if trigger_type == Key.Weekly:
-                    weekly_dates = value.get(Key.Weekly)
-                    if weekly_dates and len(weekly_dates) > 0:
-                        # 将多个星期几用逗号连接
-                        dates_str = weekly_dates[0]
-                        for i in range(1, len(weekly_dates)):
-                            dates_str += "," + weekly_dates[i]
-                        execute_day = dates_str
-
-                if execute_day:
-                    task[Key.ExecuteDay] = execute_day
-
-                # 生成crontab任务名称
-                task_name = (task[Key.TaskName] +
-                             "_Type_" + trigger_type +
-                             "_Time_" + execute_time +
-                             "_Id_" + task_id)
-                task_name = task_name.replace(":", "_").replace(" ", "_").replace("-", "_")
-                task["LinuxPlanName"] = task_name
-
-                # 创建crontab任务
-                ok, error = create_crontab_task(task)
-                if error:
-                    raise Exception(error)
-                else:
-                    MessageBox(f"创建任务: {task[Key.TaskName]} 成功!")
-                Log.info(f"create linux plan task: {task}")
-                return task
+            return True
         except Exception as e:
             Log.error(str(e))
             MessageBox(str(e))
-            return None
+            return False
 
     def create_system_plan(self):
-        task = None
-        if platform.system() == 'Windows':
-            task = self.create_windows_plan()
-        elif platform.system() == 'Linux':
-            task = self.create_linux_plan()
+        if platform.system() == 'Linux' and not self.check_linux_credentials():
+            return
+
+        task = self.do_create_plan()
 
         if task is None: return
         self.task_list.append(task)
         Utils.write_dict_to_file(AppPath.TasksJson, self.task_list)
         self.update_plan_list()
 
-    def create_windows_plan(self):
+    def do_create_plan(self):
         try:
-            plan_ui = WindowsPlanDialog(self)
+            plan_ui = SystemPlanDialog(self)
             if plan_ui.exec_() == QDialog.Accepted:
                 value = plan_ui.values()
-                Log.info(f"create windows plan value: {value}")
-                plan_name = value.get(Key.WindowsPlanName)
-                operation = value.get(Key.Operation)
-                trigger_type = value.get(Key.TriggerType)
-                day_time_type = value.get(Key.DayTimeType)
-                execute_time = value.get(Key.Hour) + ":" + value.get(Key.Minute)
-                if not value or not trigger_type or not operation:
-                    return None
-
-                task_id = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
-                is_no_name = plan_name is None or plan_name == Key.Empty or plan_name == Key.DefaultWindowsPlanName
-                task = {
-                    Key.TaskName: Key.DefaultWindowsPlanName if is_no_name else plan_name,
-                    Key.TaskID: task_id,
-                    Key.Operation: operation,
-                    Key.DayTimeType: day_time_type,
-                    Key.TriggerType: trigger_type,
-                    Key.ExecuteTime: execute_time
-                }
-
-                if day_time_type == Key.Random:
-                    task[Key.TimeOffset] = value.get(Key.TimeOffset, 0)
-                    Log.info(f"Random Time Offset: {task[Key.TimeOffset]}")
-
-                if trigger_type == Key.Multiple:
-                    multiple_tasks = {}
-                    execute_days = value.get(Key.ExecuteDays)
-                    ret, error_message = True, Key.Empty
-                    for execute_day in execute_days:
-                        task[Key.ExecuteDay] = execute_day
-                        task[Key.WindowsPlanName] = task[Key.TaskName] + "_Type_" + trigger_type + "_Date_" + execute_day + "_Time_" + execute_time + "_Id_" + task_id
-                        task[Key.WindowsPlanName] = Utils.replace_signs(task[Key.WindowsPlanName])
-                        ok, error = create_task(task)
-                        multiple_tasks[execute_day] = task[Key.WindowsPlanName]
-                        if error:
-                            error_message += str(error) + "\n"
-                        if ok is False: ret = False
-                    if ret:
-                        MessageBox(f"Create Task: {task[Key.TaskName]} Success!")
-                        task[Key.WindowsPlanName] = multiple_tasks
-                        task.pop(Key.ExecuteDay)
-                    else:
-                        raise Exception(error_message)
-                else:
-                    task[Key.WindowsPlanName] = plan_name
-                    if trigger_type == Key.Once:
-                        date = QDate(int(value.get(Key.Year)), int(value.get(Key.Month)), int(value.get(Key.Day)))
-                        execute_day = value.get(Key.Year) + "-" + value.get(Key.Month) + "-" + value.get(Key.Day)
-                        if date < QDate.currentDate():
-                            raise Exception(f"Invalid Date: {execute_day} Early than Today!")
-                        task[Key.ExecuteDay] = execute_day
-                    elif trigger_type == Key.Daily:
-                        pass
-                    elif trigger_type == Key.Weekly:
-                        dates = value.get(Key.Weekly)
-                        if not dates and len(dates) == 0: return
-                        dates_str = dates[0]
-                        for i in range(1, len(dates)):
-                            dates_str +=  "," + dates[i]
-                        task[Key.ExecuteDay] = dates_str
-                    elif trigger_type == Key.Monthly:
-                        task[Key.ExecuteDay] = value.get(Key.Monthly)
-                    else:
-                        return None
-                    task[Key.WindowsPlanName] = (task[Key.TaskName] +
-                                                 "_Type_" + trigger_type +
-                                                 "_Date_" +task.get(Key.ExecuteDay, Key.Unknown if trigger_type != Key.Daily else Key.Daily) +
-                                                 "_Time_" + execute_time +
-                                                 "_Id_" + task_id)
-                    task[Key.WindowsPlanName] = Utils.replace_signs(task[Key.WindowsPlanName])
+                task_to_json, task_list_to_create = UiFunc.parse_ui_value_to_task(value)
+                for task in task_list_to_create:
                     ok, error = create_task(task)
                     if error:
                         raise Exception(error)
-                    else:
-                        MessageBox(f"Create Task: {task[Key.TaskName]} Success!")
-                Log.info(f"create windows plan task: {task}")
 
-                return task
+                MessageBox(f"Create Task: {task_to_json[Key.TaskName]} Success!")
+                Log.info(f"create system plan task: {task_to_json}")
+
+                return task_to_json
         except Exception as e:
             Log.error(str(e))
             MessageBox(str(e))

@@ -20,14 +20,14 @@ from src.core.clock_manager import ClockManager, run_clock
 
 # 根据操作系统导入相应的模块
 if platform.system() == 'Windows':
-    from src.ui.ui_windows_plan import WindowsPlanDialog
+    from src.ui.ui_system_plan import SystemPlanDialog
     from src.ui.ui_windows_login import WindowsLoginDialog
     from src.extend.auto_windows_login import auto_windows_login_on
     from src.extend.auto_windows_plan import create_task, delete_scheduled_task
     from src.extend.network_manager import connect_network, disconnect_network
 elif platform.system() == 'Linux':
     from src.ui.ui_linux_login import LinuxLoginDialog
-    from src.ui.ui_linux_plan import LinuxPlanDialog
+    from src.ui.ui_system_plan import SystemPlanDialog
     from src.extend.auto_linux_plan import create_crontab_task, delete_crontab_task
     from src.extend.auto_linux_network import connect_network, disconnect_network
 else:
@@ -537,7 +537,7 @@ class ConfigWindow(QMainWindow):
                 MessageBox("账号验证失败次数过多，无法创建任务。请确保Linux账号配置正确后重试。")
                 return
                 
-            plan_ui = LinuxPlanDialog(self)
+            plan_ui = SystemPlanDialog(self)
             if plan_ui.exec_() == QDialog.Accepted:
                 value = plan_ui.values()
                 Log.info(f"create linux plan value: {value}")
@@ -715,7 +715,7 @@ class ConfigWindow(QMainWindow):
 
     def create_windows_plan(self):
         try:
-            plan_ui = WindowsPlanDialog(self)
+            plan_ui = SystemPlanDialog(self)
             if plan_ui.exec_() == QDialog.Accepted:
                 value = plan_ui.values()
                 Log.info(f"create windows plan value: {value}")
@@ -728,9 +728,9 @@ class ConfigWindow(QMainWindow):
                     return
 
                 task_id = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
-                is_no_name = plan_name is None or plan_name == Key.Empty or plan_name == Key.DefaultWindowsPlanName
+                is_no_name = plan_name is None or plan_name == Key.Empty or plan_name == Key.DefaultSystemPlanName
                 task = {
-                    Key.TaskName: Key.DefaultWindowsPlanName if is_no_name else plan_name,
+                    Key.TaskName: Key.DefaultSystemPlanName if is_no_name else plan_name,
                     Key.TaskID: task_id,
                     Key.Operation: operation,
                     Key.DayTimeType: day_time_type,

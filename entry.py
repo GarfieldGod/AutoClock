@@ -145,9 +145,9 @@ Auto-Clock - 自动打卡工具
 
                 if operation == Key.AutoClock:
                     ok, error = run_clock()
-                elif operation == Key.ShutDownWindows:
+                elif operation == Key.ShutDownSystem:
                     ok, error = run_windows_shutdown(30)
-                elif operation == Key.WindowsSleep:
+                elif operation == Key.SystemSleep:
                     ok, error = run_windows_sleep(30)
                 elif operation == Key.DisconnectNetwork:
                     # 对于断网操作，Windows和Linux都支持延迟参数
