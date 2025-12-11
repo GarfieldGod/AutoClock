@@ -33,6 +33,8 @@ class UiFunc:
                     execute_day = ",".join(dates)
             case Key.Monthly:
                 execute_day = value.get(Key.Monthly)
+            case Key.Daily:
+                execute_day = Key.Daily
             case _:
                 print(f"No match Task Trigger Type: {trigger_type}")
         return execute_day
