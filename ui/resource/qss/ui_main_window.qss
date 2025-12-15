@@ -51,6 +51,30 @@
     padding: 0 5px 0 25px;
 }
 
+QPushButton {
+    font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+    background-color: white;
+    font-size: 16px;
+    border: 1px solid #bbbbbb;
+    border-radius: 5px;
+}
+
+QPushButton:hover {
+    color: white;
+    background-color: #34495e;
+}
+
+QLabel {
+    font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+}
+
+QGroupBox {
+    font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+    font-weight: bold;
+    font-size: 16px;
+    color: #888888;
+}
+
 #btn_minimize, #btn_maximize, #btn_close {
     background-color: transparent;
     border: none;
@@ -100,4 +124,12 @@
 
 #max_btn:pressed {
     background-color: #1a252f;
+}
+
+#MessageBox_Label {
+    font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+    font-weight: bold;
+    font-size: 20px;
+    color: gray;
+    border: 2px sold #bbbbbb;
 }

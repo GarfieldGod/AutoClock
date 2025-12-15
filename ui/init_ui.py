@@ -13,9 +13,10 @@ from ui.template.ui_page import PageNavigation
 
 def init_page_list(w):
     icon_size = QSize(50, 50)
+    image_path = os.path.join(os.path.join(AppPath.UiResourcePath, "image"))
     nav_task = PageNavigation(
         name="Task",
-        ico=os.path.join(AppPath.UiResourcePath, "task_icon.png"),
+        ico=os.path.join(image_path, "task_icon.png"),
         image_size=icon_size
     )
     con_task = SystemTaskPage(6,6)
@@ -23,7 +24,7 @@ def init_page_list(w):
 
     nav_clock = PageNavigation(
         name="Clock",
-        ico=os.path.join(AppPath.UiResourcePath, "clock_icon.png"),
+        ico=os.path.join(image_path, "clock_icon.png"),
         image_size=icon_size
     )
     con_clock = ClockPage(6,6)
@@ -31,7 +32,7 @@ def init_page_list(w):
 
     nav_notification = PageNavigation(
         name="Notice",
-        ico=os.path.join(AppPath.UiResourcePath, "notice_icon.png"),
+        ico=os.path.join(image_path, "notice_icon.png"),
         image_size=icon_size
     )
     con_notification = NotificationPage(6, 6)

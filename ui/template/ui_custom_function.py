@@ -1,3 +1,6 @@
+import os
+import sys
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 
@@ -16,3 +19,13 @@ def load_local_image(image_label, image_path, default_value=""):
     )
 
     image_label.setPixmap(scaled_pixmap)
+
+def get_ui_resource_path():
+    if hasattr(sys, '_MEIPASS'):
+        base_path = sys._MEIPASS
+    else:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)
+        base_path = os.path.dirname(parent_dir)
+
+    return os.path.join(base_path, "ui", "resource")

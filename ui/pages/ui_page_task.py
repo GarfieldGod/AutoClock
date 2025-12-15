@@ -35,15 +35,15 @@ class SystemTaskPage(PageContent):
         super(SystemTaskPage, self).__init__(y, x)
 
     def init_container(self):
-        task = TaskListContainer(4, 6)
+        task = TaskListContainer(6, 4)
         self.add_container(task, 0,0)
 
         login = SystemLoginContainer(2,2)
-        self.add_container(login, 0,4)
+        self.add_container(login, 4,0)
 
         if platform.system() == 'Linux':
             nettest = NetWorkTestContainer(2,2)
-            self.add_container(nettest, 2,4)
+            self.add_container(nettest, 4,2)
 
 class TaskListContainer(Container):
     task_list=[]

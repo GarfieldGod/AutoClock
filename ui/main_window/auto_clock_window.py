@@ -17,7 +17,7 @@ class AutoClockWindow(MainWindow):
             title_desc="--automatically execute the tasks",
             show_max_button=False,
             window_size=QSize(800, 600),
-            icon_path=os.path.join(AppPath.UiResourcePath, "app_icon.png"),
+            icon_path=os.path.join(os.path.join(os.path.join(AppPath.UiResourcePath, "image")), "app_icon.png"),
             icon_size=QSize(90, 120)
         )
 
