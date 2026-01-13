@@ -21,6 +21,7 @@ class AutoClockWindow(MainWindow):
             icon_size=QSize(90, 120)
         )
 
+        self.save_data = {}
         self.load_data_json()
 
         self.write_timer = QTimer(self)
@@ -30,19 +31,42 @@ class AutoClockWindow(MainWindow):
     def load_data_json(self):
         try:
             if not os.path.exists(AppPath.DataJson):
+                self.save_data = {}
                 return False
 
-            self.save_data = Utils.read_dict_from_json(AppPath.DataJson)
+            data = Utils.read_dict_from_json(AppPath.DataJson)
+            if isinstance(data, dict):
+                self.save_data.update(data)
         except Exception as e:
             print(e)
 
     def write_data_json(self):
         print("write_data_json")
-        Utils.write_dict_to_file(AppPath.DataJson, self.save_data)
+        try:
+            file_data = {}
+            if os.path.exists(AppPath.DataJson):
+                existing = Utils.read_dict_from_json(AppPath.DataJson)
+                if isinstance(existing, dict):
+                    file_data = existing
+
+            merged = {}
+            merged.update(file_data)
+            if isinstance(self.save_data, dict):
+                merged.update(self.save_data)
+
+            Utils.write_dict_to_file(AppPath.DataJson, merged)
+        except Exception as e:
+            print(e)
         self.write_timer.stop()
 
     def get_save_data(self, key, default=None):
-        return self.save_data.get(key, default)
+        try:
+            if not isinstance(self.save_data, dict):
+                return default
+            return self.save_data.get(key, default)
+        except Exception as e:
+            print(e)
+            return default
 
     def on_window_close(self):
         self.write_data_json()
