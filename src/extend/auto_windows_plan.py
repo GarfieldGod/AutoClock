@@ -220,7 +220,7 @@ def create_task(task):
                 day=task.get(Key.ExecuteDay),
                 time=task.get(Key.ExecuteTime)
             )
-        elif ui_trigger_type == Key.Daily:
+        elif ui_trigger_type == Key.Daily or ui_trigger_type == Key.SmartHoliday:
             ok = create_scheduled_task(
                 task_name=task.get(Key.WindowsPlanName),
                 task_id=task.get(Key.TaskID),

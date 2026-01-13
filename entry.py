@@ -3,7 +3,7 @@ import os
 import time
 import random
 import argparse
-from datetime import datetime
+from datetime import datetime, date
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QCoreApplication
@@ -15,6 +15,7 @@ from src.core.clock_manager import run_clock
 from src.utils.const import Key, AppPath
 from src.extend.email_server import send_email_by_result
 from ui.init_ui import init_ui
+import chinese_calendar as calendar
 
 # 根据操作系统选择正确的网络管理模块
 system_name = os.name
@@ -133,6 +134,36 @@ Auto-Clock - 自动打卡工具
                     raise Exception(f"Task ID: {args.task_id} not found.")
                 operation = task.get(Key.Operation)
                 day_time_type = task.get(Key.DayTimeType)
+                trigger_type = task.get(Key.TriggerType)
+
+                # SmartHoliday: only execute on Chinese workdays within the same year
+                if trigger_type == Key.SmartHoliday:
+                    try:
+                        start_year = int(task.get(Key.Year))
+                        start_month = int(task.get(Key.Month))
+                        start_day = int(task.get(Key.Day))
+                        start_date = date(start_year, start_month, start_day)
+                    except Exception as e:
+                        Log.error(f"SmartHoliday task missing or invalid start date, skip execution. Error: {e}")
+                        sys.exit(1)
+
+                    today = date.today()
+
+                    # Only valid in the creation year
+                    if today.year != start_year:
+                        Log.info(f"SmartHoliday task year mismatch (task: {start_year}, today: {today.year}), skip execution.")
+                        sys.exit(0)
+
+                    # Only valid between start_date and end of year
+                    if today < start_date or today > date(start_year, 12, 31):
+                        Log.info(f"SmartHoliday: today {today} is out of valid range [{start_date}, {start_year}-12-31], skip execution.")
+                        sys.exit(0)
+
+                    # Only execute on Chinese workdays (including adjusted workdays/holidays)
+                    if not calendar.is_workday(today):
+                        Log.info(f"SmartHoliday: today {today} is not a Chinese workday, skip execution.")
+                        sys.exit(0)
+
                 if day_time_type and day_time_type == Key.Random:
                     time_offset = task.get(Key.TimeOffset, 0)
                     random_sec = random.randint(0, time_offset)

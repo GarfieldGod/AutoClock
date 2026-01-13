@@ -35,6 +35,10 @@ class UiFunc:
                 execute_day = value.get(Key.Monthly)
             case Key.Daily:
                 execute_day = Key.Daily
+            case Key.SmartHoliday:
+                # SmartHoliday uses Daily schedule with runtime smart check,
+                # we keep a placeholder value for execute_day.
+                execute_day = Key.SmartHoliday
             case _:
                 print(f"No match Task Trigger Type: {trigger_type}")
         return execute_day
@@ -59,6 +63,12 @@ class UiFunc:
             Key.TriggerType: trigger_type,
             Key.ExecuteTime: value.get(Key.Hour) + ":" + value.get(Key.Minute)
         }
+
+        # For SmartHoliday, record creation date (year/month/day) for runtime range checking
+        if trigger_type == Key.SmartHoliday:
+            task[Key.Year] = value.get(Key.Year)
+            task[Key.Month] = value.get(Key.Month)
+            task[Key.Day] = value.get(Key.Day)
 
         if task[Key.DayTimeType] == Key.Random:
             task[Key.TimeOffset] = value.get(Key.TimeOffset, 0)

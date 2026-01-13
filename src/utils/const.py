@@ -33,6 +33,7 @@ class Key:
     Daily: str = "Daily"
     Weekly: str = "Weekly"
     Monthly: str = "Monthly"
+    SmartHoliday: str = "SmartHoliday"
 
     Random: str = "Random"
     Specify: str = "Specify"
