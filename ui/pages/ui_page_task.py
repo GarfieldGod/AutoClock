@@ -172,7 +172,12 @@ class TaskListContainer(Container):
                 value = plan_ui.values()
                 task_to_json, task_list_to_create = UiFunc.parse_ui_value_to_task(value)
                 for task in task_list_to_create:
-                    ok, error = create_task(task)
+                    if platform.system() == "Windows":
+                        ok, error = create_task(task)
+                    elif platform.system() == "Linux":
+                        ok, error = create_crontab_task(task)
+                    else:
+                        raise Exception("System not supported")
                     if error:
                         raise Exception(error)
 
@@ -204,23 +209,32 @@ class TaskListContainer(Container):
             if delete_task is None:
                 raise Exception(f"Delete plan failed, no plan id: {plan_id}")
             short_name = delete_task[Key.TaskName]
-            plan_name = delete_task[Key.WindowsPlanName]
+            plan_name = delete_task[Key.SystemPlanName]
 
             dlg = MessageBox(f"\nAre you really want to delete this Plan:\n\n{short_name}\n", need_check=True, message_only=False, message_name="Delete Plan")
             if dlg.exec_() != QDialog.Accepted:
                 return
 
             if platform.system() == "Windows":
-                if delete_task[Key.TriggerType] == Key.Multiple:
+                if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
                     for task_name in plan_name:
                         ok, error = delete_scheduled_task(plan_name.get(task_name))
-                        if not ok: raise Exception(error)
+                        if not ok:
+                            raise Exception(error)
                 else:
                     ok, error = delete_scheduled_task(plan_name)
-                    if not ok: raise Exception(error)
+                    if not ok:
+                        raise Exception(error)
             elif platform.system() == "Linux":
-                ok, error = delete_crontab_task(plan_name)
-                if not ok: raise Exception(error)
+                if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
+                    for task_name in plan_name:
+                        ok, error = delete_crontab_task(plan_name.get(task_name))
+                        if not ok:
+                            raise Exception(error)
+                else:
+                    ok, error = delete_crontab_task(plan_name)
+                    if not ok:
+                        raise Exception(error)
             else:
                 raise Exception("System not supported")
 

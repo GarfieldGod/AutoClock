@@ -260,7 +260,7 @@ class SystemPlanDialog(QDialog):
         minute = self.minute_sel.currentText().strip() if self.day_time_type.currentText() == Key.Specify else self.minute_sel_start.currentText().strip()
         time_offset = self.get_time_offset()
         return {
-            Key.WindowsPlanName: self.plan_name_edit.text().strip(),
+            Key.PlanName: self.plan_name_edit.text().strip(),
             Key.TriggerType: self.trigger_type.currentText().strip(),
             Key.Operation: self.operation.currentText().strip(),
             Key.DayTimeType: self.day_time_type.currentText().strip(),
