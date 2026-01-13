@@ -17,8 +17,6 @@ class Key:
     PlanName: str = "plan_name"
     # 系统侧真实的计划任务名称（Windows TaskScheduler / Linux crontab 标识）
     SystemPlanName: str = "system_plan_name"
-    # 历史字段：已废弃（非兼容变更后不再读写）
-    WindowsPlanName: str = "windows_plan_name"
     ExecuteTime: str = "execute_time"
     ExecuteDay: str = "execute_day"
     ExecuteDays: str = "execute_days"
