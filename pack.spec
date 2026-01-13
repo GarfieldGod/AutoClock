@@ -1,6 +1,7 @@
 # auto_clock.spec
 # -*- mode: python ; coding: utf-8 -*-
 import sys
+import os
 from pathlib import Path
 from PyInstaller.building.build_main import Analysis, PYZ, EXE, COLLECT
 
