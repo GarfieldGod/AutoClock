@@ -562,6 +562,9 @@ class ConfigWindow(QMainWindow):
                     Key.DayTimeType: value.get(Key.DayTimeType),
                     Key.TimeOffset: value.get(Key.TimeOffset, 0)
                 }
+
+                if trigger_type == Key.SmartHoliday:
+                    task[Key.Year] = value.get(Key.Year)
                 
                 # 处理执行日期
                 execute_day = value.get(Key.ExecuteDay)
@@ -738,6 +741,9 @@ class ConfigWindow(QMainWindow):
                     Key.ExecuteTime: execute_time
                 }
 
+                if trigger_type == Key.SmartHoliday:
+                    task[Key.Year] = value.get(Key.Year)
+
                 if day_time_type == Key.Random:
                     task[Key.TimeOffset] = value.get(Key.TimeOffset, 0)
                     Log.info(f"Random Time Offset: {task[Key.TimeOffset]}")
@@ -780,6 +786,8 @@ class ConfigWindow(QMainWindow):
                         task[Key.ExecuteDay] = dates_str
                     elif trigger_type == Key.Monthly:
                         task[Key.ExecuteDay] = value.get(Key.Monthly)
+                    elif trigger_type == Key.SmartHoliday:
+                        task[Key.ExecuteDay] = Key.SmartHoliday
                     else:
                         return
                     task[Key.WindowsPlanName] = (task[Key.TaskName] +

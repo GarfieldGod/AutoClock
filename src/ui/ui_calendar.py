@@ -16,7 +16,8 @@ class Calendar(QWidget):
         self.refresh_calendar()
 
     def init_ui(self):
-        self.resize(500, 400)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setMinimumHeight(320)
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(20, 20, 20, 20)
