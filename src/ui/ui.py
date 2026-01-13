@@ -656,7 +656,8 @@ class ConfigWindow(QMainWindow):
         
         # 显示执行日期（如果有）
         if Key.ExecuteDay in task:
-            layout_plan_line.addWidget(QtUI.create_label(str(task[Key.ExecuteDay]), size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
+            date_text = "Smart" if task.get(Key.TriggerType) == Key.SmartHoliday else str(task[Key.ExecuteDay])
+            layout_plan_line.addWidget(QtUI.create_label(date_text, size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
         else:
             layout_plan_line.addWidget(QtUI.create_label("每日", size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
         
@@ -855,6 +856,8 @@ class ConfigWindow(QMainWindow):
             layout_plan_line.addWidget(QtUI.create_label(task[Key.ExecuteDay],size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
         elif task[Key.TriggerType] == Key.Monthly:
             layout_plan_line.addWidget(QtUI.create_label(task[Key.ExecuteDay],size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
+        elif task[Key.TriggerType] == Key.SmartHoliday:
+            layout_plan_line.addWidget(QtUI.create_label("Smart", size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
         elif task[Key.TriggerType] == Key.Multiple:
             layout_plan_line.addWidget(QtUI.create_label("[······]",size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
             pass

@@ -58,6 +58,8 @@ class TaskListWidget(QWidget):
             layout_plan_line.addWidget(QtUI.create_label(task[Key.ExecuteDay],size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
         elif task[Key.TriggerType] == Key.Monthly:
             layout_plan_line.addWidget(QtUI.create_label(task[Key.ExecuteDay],size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
+        elif task[Key.TriggerType] == Key.SmartHoliday:
+            layout_plan_line.addWidget(QtUI.create_label("Smart", size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
         elif task[Key.TriggerType] == Key.Multiple:
             layout_plan_line.addWidget(QtUI.create_label("[······]",size=front_size, alignment=Qt.AlignCenter, fixed_width=80))
             pass
