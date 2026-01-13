@@ -541,7 +541,7 @@ class ConfigWindow(QMainWindow):
             if plan_ui.exec_() == QDialog.Accepted:
                 value = plan_ui.values()
                 Log.info(f"create linux plan value: {value}")
-                plan_name = value.get(Key.WindowsPlanName)
+                plan_name = value.get(Key.PlanName)
                 operation = value.get(Key.Operation)
                 trigger_type = value.get(Key.TriggerType)
                 execute_time = value.get(Key.ExecuteTime)
@@ -588,7 +588,7 @@ class ConfigWindow(QMainWindow):
                             "_Time_" + execute_time + 
                             "_Id_" + task_id)
                 task_name = task_name.replace(":", "_").replace(" ", "_").replace("-", "_")
-                task["LinuxPlanName"] = task_name
+                task[Key.SystemPlanName] = task_name
                 
                 # 创建crontab任务
                 ok, error = create_crontab_task(task)
@@ -692,7 +692,7 @@ class ConfigWindow(QMainWindow):
                 raise Exception(f"删除任务失败，未找到任务ID: {plan_id}")
             
             short_name = delete_task[Key.TaskName]
-            plan_name = delete_task.get("LinuxPlanName")
+            plan_name = delete_task.get(Key.SystemPlanName)
             
             if not plan_name:
                 raise Exception("任务名称未找到")
@@ -722,7 +722,7 @@ class ConfigWindow(QMainWindow):
             if plan_ui.exec_() == QDialog.Accepted:
                 value = plan_ui.values()
                 Log.info(f"create windows plan value: {value}")
-                plan_name = value.get(Key.WindowsPlanName)
+                plan_name = value.get(Key.PlanName)
                 operation = value.get(Key.Operation)
                 trigger_type = value.get(Key.TriggerType)
                 day_time_type = value.get(Key.DayTimeType)
@@ -754,21 +754,21 @@ class ConfigWindow(QMainWindow):
                     ret, error_message = True, Key.Empty
                     for execute_day in execute_days:
                         task[Key.ExecuteDay] = execute_day
-                        task[Key.WindowsPlanName] = task[Key.TaskName] + "_Type_" + trigger_type + "_Date_" + execute_day + "_Time_" + execute_time + "_Id_" + task_id
-                        task[Key.WindowsPlanName] = Utils.replace_signs(task[Key.WindowsPlanName])
+                        task[Key.SystemPlanName] = task[Key.TaskName] + "_Type_" + trigger_type + "_Date_" + execute_day + "_Time_" + execute_time + "_Id_" + task_id
+                        task[Key.SystemPlanName] = Utils.replace_signs(task[Key.SystemPlanName])
                         ok, error = create_task(task)
-                        multiple_tasks[execute_day] = task[Key.WindowsPlanName]
+                        multiple_tasks[execute_day] = task[Key.SystemPlanName]
                         if error:
                             error_message += str(error) + "\n"
                         if ok is False: ret = False
                     if ret:
                         MessageBox(f"Create Task: {task[Key.TaskName]} Success!")
-                        task[Key.WindowsPlanName] = multiple_tasks
+                        task[Key.SystemPlanName] = multiple_tasks
                         task.pop(Key.ExecuteDay)
                     else:
                         raise Exception(error_message)
                 else:
-                    task[Key.WindowsPlanName] = plan_name
+                    task[Key.SystemPlanName] = plan_name
                     if trigger_type == Key.Once:
                         date = QDate(int(value.get(Key.Year)), int(value.get(Key.Month)), int(value.get(Key.Day)))
                         execute_day = value.get(Key.Year) + "-" + value.get(Key.Month) + "-" + value.get(Key.Day)
@@ -790,12 +790,12 @@ class ConfigWindow(QMainWindow):
                         task[Key.ExecuteDay] = Key.SmartHoliday
                     else:
                         return
-                    task[Key.WindowsPlanName] = (task[Key.TaskName] +
+                    task[Key.SystemPlanName] = (task[Key.TaskName] +
                                                  "_Type_" + trigger_type +
                                                  "_Date_" +task.get(Key.ExecuteDay, Key.Unknown if trigger_type != Key.Daily else Key.Daily) +
                                                  "_Time_" + execute_time +
                                                  "_Id_" + task_id)
-                    task[Key.WindowsPlanName] = Utils.replace_signs(task[Key.WindowsPlanName])
+                    task[Key.SystemPlanName] = Utils.replace_signs(task[Key.SystemPlanName])
                     ok, error = create_task(task)
                     if error:
                         raise Exception(error)
@@ -883,7 +883,7 @@ class ConfigWindow(QMainWindow):
             if delete_task is None:
                 raise Exception(f"Delete plan failed, no plan id: {plan_id}")
             short_name = delete_task[Key.TaskName]
-            plan_name = delete_task[Key.WindowsPlanName]
+            plan_name = delete_task[Key.SystemPlanName]
 
             dlg = MessageBox(f"\nAre you really want to delete this Plan:\n\n{short_name}\n", need_check=True, message_only=False, message_name="Delete Plan")
             if dlg.exec_() != QDialog.Accepted:

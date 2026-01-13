@@ -216,7 +216,7 @@ if __name__ == "__main__":
         "operation": "Shut Down Windows",
         "trigger_type": "Once",
         "execute_time": "19:55",
-        "windows_plan_name": "AutoClock_Windows_Plan_Type_Once_Date_2025_11_08_Time_19_55_Id_2025_11_08_19_54_47_920866",
+        "system_plan_name": "AutoClock_Windows_Plan_Type_Once_Date_2025_11_08_Time_19_55_Id_2025_11_08_19_54_47_920866",
         "execute_day": "2025-11-08",
         Key.TimeOffset: 3960,
     }
