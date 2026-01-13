@@ -60,6 +60,8 @@ class Key:
     DefaultLinuxPlanName: str = "AutoClock_Linux_Plan"
     Unknown: str = "Unknown"
     Empty: str = ""
+    LinuxUserName: str = "LinuxUserName"
+    CheckLinuxCredentialsOnPlanCreate: str = "check_linux_credentials_on_plan_create"
 
 @dataclass
 class AppPath:

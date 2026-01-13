@@ -9,6 +9,8 @@ from ui.main_window.auto_clock_window import AutoClockWindow
 from ui.pages.ui_page_notification import NotificationPage
 from ui.pages.ui_page_clock import ClockPage
 from ui.pages.ui_page_task import SystemTaskPage
+from ui.pages.ui_page_settings import ToolSettingsPage
+
 from ui.template.ui_page import PageNavigation
 
 def init_page_list(w):
@@ -37,6 +39,14 @@ def init_page_list(w):
     )
     con_notification = NotificationPage(6, 6)
     w.add_page(nav_notification, con_notification)
+
+    nav_settings = PageNavigation(
+        name="Settings",
+        ico=os.path.join(image_path, "settings_icon.png"),
+        image_size=icon_size
+    )
+    con_settings = ToolSettingsPage(6, 6)
+    w.add_page(nav_settings, con_settings)
 
 def init_ui():
     app = QApplication(sys.argv)

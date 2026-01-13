@@ -278,7 +278,7 @@ class LinuxLoginDialog(QDialog):
             if os.path.exists(AppPath.DataJson):
                 data = Utils.read_dict_from_json(AppPath.DataJson)
                 if data:
-                    self.name_edit.setText(data.get("LinuxUserName", ""))
+                    self.name_edit.setText(data.get(Key.LinuxUserName, ""))
                     # 出于安全考虑，不自动加载密码，但可以加载用户名
                     self.validate_credentials()
         except Exception as e:
@@ -296,7 +296,7 @@ class LinuxLoginDialog(QDialog):
                     data = Utils.read_dict_from_json(AppPath.DataJson) or {}
                 
                 # 更新Linux用户名
-                data["LinuxUserName"] = username
+                data[Key.LinuxUserName] = username
                 
                 # 保存数据
                 Utils.write_dict_to_file(AppPath.DataJson, data)

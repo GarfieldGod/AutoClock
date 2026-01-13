@@ -121,8 +121,42 @@ class TaskListContainer(Container):
             return False
 
     def create_system_plan(self):
-        if platform.system() == 'Linux' and not self.check_linux_credentials():
-            return
+        if platform.system() == 'Linux':
+            # 如果当前Linux账号配置已有效，则不再弹出提示，直接创建计划
+            try:
+                login_dlg = LinuxLoginDialog(self)
+                is_valid, _ = login_dlg.get_credentials_status()
+            except Exception as e:
+                Log.error(str(e))
+                is_valid = False
+
+            if not is_valid:
+                try:
+                    config = Utils.read_dict_from_json(AppPath.DataJson) or {}
+                except Exception as e:
+                    Log.error(str(e))
+                    config = {}
+
+                need_check = config.get(Key.CheckLinuxCredentialsOnPlanCreate, True)
+
+                if need_check:
+                    choice = MessageBox(
+                        "建议先配置并验证Linux账号与自动登录，以确保计划任务执行后能够自动登录系统。\n\n"
+                        "请选择下一步操作：",
+                        "Linux账号配置提示",
+                        buttons=["去配置并验证", "直接创建", "不再提示"],
+                    )
+
+                    if choice == "去配置并验证":
+                        if not self.check_linux_credentials():
+                            return
+                    elif choice == "不再提示":
+                        config[Key.CheckLinuxCredentialsOnPlanCreate] = False
+                        try:
+                            Utils.write_dict_to_file(AppPath.DataJson, config)
+                        except Exception as e:
+                            Log.error(str(e))
+                    # "直接创建" 以及 "不再提示" 最终都继续创建计划
 
         task = self.do_create_plan()
 
