@@ -47,11 +47,32 @@ class RemoteLinuxRunner:
         code, _, _ = self._ssh.exec(f"test -x {self._layout.runner_path_version(version)}")
         return code == 0
 
-    def upload_runner_onedir(self, local_onedir: str, version: str) -> str:
+    def ensure_installed_from_url(self, version: str, url: str) -> Tuple[bool, str | None]:
+        if self.remote_has_version(version):
+            return True, None
+
         remote_dir = self.ensure_version_dir(version)
-        self._ssh.upload_dir(local_onedir, remote_dir)
-        self._ssh.exec(f"chmod +x {self._layout.runner_path_version(version)}")
-        return remote_dir
+        runner_path = self._layout.runner_path_version(version)
+
+        script = (
+            "set -e; "
+            f"mkdir -p {remote_dir}; "
+            "tmp=\"$(mktemp)\"; "
+            "if command -v curl >/dev/null 2>&1; then "
+            f"curl -L -o \"$tmp\" '{url}'; "
+            "elif command -v wget >/dev/null 2>&1; then "
+            f"wget -O \"$tmp\" '{url}'; "
+            "else echo 'curl/wget not found' 1>&2; exit 2; fi; "
+            f"tar -xzf \"$tmp\" -C {remote_dir}; "
+            "rm -f \"$tmp\"; "
+            f"chmod +x {runner_path}; "
+            f"test -x {runner_path}"
+        )
+        code, out, err = self._ssh.exec(script)
+        if code == 0:
+            return True, None
+        msg = (err or out or "").strip() or f"install linux-runner failed with code {code}"
+        return False, msg
 
     def set_current(self, version: str) -> Tuple[int, str, str]:
         runner = self._layout.runner_path_version(version)

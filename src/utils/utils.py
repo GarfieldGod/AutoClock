@@ -54,6 +54,20 @@ class Utils:
             return None
 
     @staticmethod
+    def get_app_version_from_config_json(default: str = "") -> str:
+        try:
+            data = Utils.read_dict_from_json(AppPath.ConfigJson)
+            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+                v = data[0].get("version")
+                return str(v) if v is not None else default
+            if isinstance(data, dict):
+                v = data.get("version")
+                return str(v) if v is not None else default
+            return default
+        except Exception:
+            return default
+
+    @staticmethod
     def get_ico_path():
         if hasattr(sys, '_MEIPASS'):
             base_path = sys._MEIPASS

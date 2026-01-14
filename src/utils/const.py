@@ -68,6 +68,14 @@ class Key:
     LinuxDisplay: str = "linux_display"
     CheckLinuxCredentialsOnPlanCreate: str = "check_linux_credentials_on_plan_create"
 
+    SshEnabled: str = "ssh_enabled"
+    SshHost: str = "ssh_host"
+    SshUsername: str = "ssh_username"
+    SshPassword: str = "ssh_password"
+    SshUsePrivateKey: str = "ssh_use_private_key"
+    SshPrivateKeyPath: str = "ssh_private_key_path"
+
+
 @dataclass
 class AppPath:
     if sys.platform.startswith('win'):
@@ -104,3 +112,4 @@ class WebPath:
     AppProjectPath: str = "https://github.com/GarfieldGod/auto-clock"
     NeusoftKQPath: str = "https://kq.neusoft.com/"
     NeusoftKQLoginPath: str = "https://kq.neusoft.com/login"
+    LinuxRunnerDownloadUrlTemplate: str = "https://gitee.com/garfieldgod/auto-clock/releases/download/v{version}/linux-runner.tar.gz"

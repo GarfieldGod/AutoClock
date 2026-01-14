@@ -1,8 +1,9 @@
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QLineEdit, QCheckBox, QWidget, QHBoxLayout
+from PyQt5.QtWidgets import QLineEdit, QCheckBox, QWidget, QHBoxLayout, QPushButton, QFileDialog
 
 from src.utils.const import Key
 from src.utils.utils import QtUI, Utils
+from src.utils.const import AppPath
 
 
 class LineEdit(QLineEdit):
@@ -19,6 +20,61 @@ class LineEdit(QLineEdit):
 
     def set_value(self, value):
         self.setText(str(value))
+
+
+class PasswordLineEdit(LineEdit):
+    def __init__(self, key, default="", parent=None):
+        super(PasswordLineEdit, self).__init__(key, default=default, parent=parent)
+        self.setEchoMode(QLineEdit.Password)
+
+
+class FileSelectLineEdit(QWidget):
+    def __init__(self, key, default="", parent=None):
+        super(FileSelectLineEdit, self).__init__(parent)
+        self.key = key
+        self.default = default
+
+        self._line = QLineEdit()
+        self._btn = QPushButton("...")
+        self._btn.setFixedWidth(30)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(self._line)
+        layout.addWidget(self._btn)
+
+        self._set_func = None
+        self._line.textChanged.connect(self._on_text_changed)
+        self._btn.clicked.connect(self._choose_file)
+
+    def _on_text_changed(self):
+        if self._set_func is not None:
+            self._set_func(self.key, self._line.text())
+
+    def value_changed_func(self, set_func):
+        self._set_func = set_func
+
+    def set_value(self, value):
+        self._line.setText(str(value) if value is not None else "")
+
+    def _choose_file(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Select Private Key", "")
+        if not path:
+            return
+
+        try:
+            import os
+            import shutil
+            from pathlib import Path
+
+            keys_dir = Path(AppPath.DataRoot) / "ssh_keys"
+            keys_dir.mkdir(parents=True, exist_ok=True)
+            target = keys_dir / Path(path).name
+            shutil.copy2(path, target)
+            self._line.setText(str(target))
+        except Exception:
+            self._line.setText(path)
 
 class CheckBox(QCheckBox):
     def __init__(self, key, default=False, parent=None):

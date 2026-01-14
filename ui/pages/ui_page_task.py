@@ -14,6 +14,9 @@ from ui.custom.custom_style import get_group_css
 from ui.custom.custom_widget import TaskListWidget
 from ui.template.ui_page import PageContent, Container
 from src.ui.ui_system_plan import SystemPlanDialog
+from src.extend.ssh_client import SshClient, SshConfig
+from src.extend.remote_linux_runner import RemoteLinuxRunner
+from src.utils.const import WebPath
 
 # 根据操作系统导入相应的模块
 if platform.system() == 'Windows':
@@ -173,7 +176,42 @@ class TaskListContainer(Container):
                 task_to_json, task_list_to_create = UiFunc.parse_ui_value_to_task(value)
                 for task in task_list_to_create:
                     if platform.system() == "Windows":
-                        ok, error = create_task(task)
+                        ssh_enabled = bool(self.get_data_func(Key.SshEnabled, False)) if self.get_data_func else False
+                        if ssh_enabled:
+                            w = self.window()
+                            if not (hasattr(w, "is_remote_connected") and w.is_remote_connected()):
+                                MessageBox("请先在 Settings -> SSH Settings 点击“连接”，连接成功后再创建远端计划任务")
+                                return
+
+                            host = str(self.get_data_func(Key.SshHost, "") or "").strip()
+                            username = str(self.get_data_func(Key.SshUsername, "") or "").strip()
+                            password = str(self.get_data_func(Key.SshPassword, "") or "")
+                            use_pkey = bool(self.get_data_func(Key.SshUsePrivateKey, False))
+                            pkey_path = str(self.get_data_func(Key.SshPrivateKeyPath, "") or "").strip()
+                            version = Utils.get_app_version_from_config_json(default="")
+                            if not host or not username or not version:
+                                raise Exception("SSH配置不完整或无法获取版本号")
+                            url = WebPath.LinuxRunnerDownloadUrlTemplate.format(version=version)
+                            ssh_cfg = SshConfig(
+                                host=host,
+                                username=username,
+                                password=None if use_pkey else password,
+                                pkey_path=pkey_path if use_pkey else None,
+                            )
+                            with SshClient(ssh_cfg) as ssh:
+                                remote = RemoteLinuxRunner(ssh)
+                                ok2, err = remote.ensure_installed_from_url(version=version, url=url)
+                                if not ok2:
+                                    raise Exception(err or "远端安装 linux-runner 失败")
+                                code, out, err2 = remote.set_current(version)
+                                if code != 0:
+                                    raise Exception((err2 or out or "").strip() or "远端 set_current 失败")
+                                code, out, err2 = remote.cron_create(task)
+                                if code != 0:
+                                    raise Exception((err2 or out or "").strip() or "远端创建 crontab 失败")
+                            ok, error = True, None
+                        else:
+                            ok, error = create_task(task)
                     elif platform.system() == "Linux":
                         ok, error = create_crontab_task(task)
                     else:
@@ -192,8 +230,11 @@ class TaskListContainer(Container):
 
     def delete_system_plan(self):
         try:
-            selected_item = self.system_plan_list.currentItem()
-            selected_widget = self.system_plan_list.itemWidget(selected_item)
+            current_item = self.system_plan_list.currentItem()
+            if current_item is None:
+                MessageBox("请选择要删除的计划任务")
+                return
+            selected_widget = self.system_plan_list.itemWidget(current_item)
             if not selected_widget:
                 Log.error("选中项未绑定Plan")
                 return
@@ -216,15 +257,56 @@ class TaskListContainer(Container):
                 return
 
             if platform.system() == "Windows":
-                if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
-                    for task_name in plan_name:
-                        ok, error = delete_scheduled_task(plan_name.get(task_name))
+                ssh_enabled = bool(self.get_data_func(Key.SshEnabled, False)) if self.get_data_func else False
+                if ssh_enabled:
+                    w = self.window()
+                    if not (hasattr(w, "is_remote_connected") and w.is_remote_connected()):
+                        MessageBox("请先在 Settings -> SSH Settings 点击“连接”，连接成功后再删除远端计划任务")
+                        return
+
+                    host = str(self.get_data_func(Key.SshHost, "") or "").strip()
+                    username = str(self.get_data_func(Key.SshUsername, "") or "").strip()
+                    password = str(self.get_data_func(Key.SshPassword, "") or "")
+                    use_pkey = bool(self.get_data_func(Key.SshUsePrivateKey, False))
+                    pkey_path = str(self.get_data_func(Key.SshPrivateKeyPath, "") or "").strip()
+                    version = Utils.get_app_version_from_config_json(default="")
+                    if not host or not username or not version:
+                        raise Exception("SSH配置不完整或无法获取版本号")
+                    url = WebPath.LinuxRunnerDownloadUrlTemplate.format(version=version)
+                    ssh_cfg = SshConfig(
+                        host=host,
+                        username=username,
+                        password=None if use_pkey else password,
+                        pkey_path=pkey_path if use_pkey else None,
+                    )
+                    with SshClient(ssh_cfg) as ssh:
+                        remote = RemoteLinuxRunner(ssh)
+                        ok2, err = remote.ensure_installed_from_url(version=version, url=url)
+                        if not ok2:
+                            raise Exception(err or "远端安装 linux-runner 失败")
+                        code, out, err2 = remote.set_current(version)
+                        if code != 0:
+                            raise Exception((err2 or out or "").strip() or "远端 set_current 失败")
+
+                        if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
+                            for task_name in plan_name:
+                                code, out, err2 = remote.cron_delete(plan_name.get(task_name))
+                                if code != 0:
+                                    raise Exception((err2 or out or "").strip() or "远端删除 crontab 失败")
+                        else:
+                            code, out, err2 = remote.cron_delete(plan_name)
+                            if code != 0:
+                                raise Exception((err2 or out or "").strip() or "远端删除 crontab 失败")
+                else:
+                    if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
+                        for task_name in plan_name:
+                            ok, error = delete_scheduled_task(plan_name.get(task_name))
+                            if not ok:
+                                raise Exception(error)
+                    else:
+                        ok, error = delete_scheduled_task(plan_name)
                         if not ok:
                             raise Exception(error)
-                else:
-                    ok, error = delete_scheduled_task(plan_name)
-                    if not ok:
-                        raise Exception(error)
             elif platform.system() == "Linux":
                 if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
                     for task_name in plan_name:
