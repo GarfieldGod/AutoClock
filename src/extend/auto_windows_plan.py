@@ -27,9 +27,10 @@ def create_scheduled_task(
     :return: 创建成功返回 True，失败返回 False
     """
     run_as_admin: bool = True
-    exe_path = Utils.get_execute_file()
-    if not exe_path: raise Exception("Can't get execute file path.")
-    operation = f'{exe_path} --task_id={task_id}'
+    runner_cmd = Utils.get_runner_execute_file()
+    if not runner_cmd:
+        raise Exception("Can't get runner execute file path.")
+    operation = f'{runner_cmd} --task_id={task_id}'
 
     cmd = [
         "schtasks", "/create",

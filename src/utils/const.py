@@ -88,6 +88,7 @@ class AppPath:
     
     DataJson: str = os.path.join(DataRoot, "data.json")
     TasksJson: str = os.path.join(DataRoot, "tasks.json")
+    RunnerResultJson: str = os.path.join(DataRoot, "runner_result.json")
     if hasattr(sys, '_MEIPASS'):
         ProjectRoot = sys._MEIPASS
     else:

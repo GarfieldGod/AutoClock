@@ -69,9 +69,9 @@ def create_crontab_entry(task_name, task_id, trigger_type, day=None, time=None):
     :return: crontab条目字符串
     """
     # 获取执行文件路径
-    exe_path = Utils.get_execute_file()
-    if not exe_path:
-        raise Exception("无法获取执行文件路径")
+    runner_cmd = Utils.get_runner_execute_file()
+    if not runner_cmd:
+        raise Exception("无法获取runner执行文件路径")
 
     # 构建crontab执行命令，设置必要的环境变量
     home_dir = os.path.expanduser("~")
@@ -79,7 +79,7 @@ def create_crontab_entry(task_name, task_id, trigger_type, day=None, time=None):
     user = os.environ.get('USER', os.environ.get('LOGNAME', 'user'))
     
     # 构建完整的命令，包含环境变量设置
-    command = f'PATH={path_env} HOME={home_dir} USER={user} DISPLAY=:1 {exe_path} --task_id={task_id}'
+    command = f'PATH={path_env} HOME={home_dir} USER={user} DISPLAY=:1 {runner_cmd} --task_id={task_id}'
     
     # 解析时间
     try:

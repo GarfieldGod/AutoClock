@@ -37,31 +37,41 @@ fi
 # 开始打包
 echo ""
 echo "开始打包应用程序..."
-pyinstaller pack_linux.spec
+pyinstaller --clean --noconfirm pack_linux.spec
 
 # 检查打包是否成功
-if [ -f "dist/auto_clock" ]; then
+if [ -f "dist/auto_clock/auto_clock" ]; then
     echo ""
     echo "设置驱动文件执行权限..."
     # 查找并设置所有msedgedriver文件的执行权限
     find dist -name "msedgedriver" -type f -exec chmod +x {} \;
+
+    if [ ! -f "dist/auto_clock/auto-clock-runner" ]; then
+        echo ""
+        echo "================================"
+        echo "打包失败！"
+        echo "================================"
+        echo "缺少runner可执行文件: dist/auto_clock/auto-clock-runner"
+        exit 1
+    fi
     
     echo ""
     echo "================================"
     echo "打包成功！"
     echo "================================"
     echo ""
-    echo "可执行文件位置: dist/auto_clock"
+    echo "可执行文件位置: dist/auto_clock/auto_clock"
+    echo "Runner位置: dist/auto_clock/auto-clock-runner"
     echo ""
     echo "使用方法:"
     echo "  1. 图形界面模式:"
-    echo "     ./dist/auto_clock"
+    echo "     ./dist/auto_clock/auto_clock"
     echo ""
     echo "  2. 无头模式执行任务:"
-    echo "     ./dist/auto_clock --headless --task_id=YOUR_TASK_ID"
+    echo "     ./dist/auto_clock/auto_clock --headless --task_id=YOUR_TASK_ID"
     echo ""
     echo "  3. 任务模式:"
-    echo "     ./dist/auto_clock --task_id=YOUR_TASK_ID"
+    echo "     ./dist/auto_clock/auto_clock --task_id=YOUR_TASK_ID"
     echo ""
     echo "注意事项:"
     echo "  - 首次运行需要配置 config.json"

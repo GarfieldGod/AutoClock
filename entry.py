@@ -3,6 +3,7 @@ import os
 import time
 import random
 import argparse
+import subprocess
 from datetime import datetime, date
 
 from PyQt5.QtWidgets import QApplication
@@ -11,9 +12,7 @@ from PyQt5.QtCore import QCoreApplication
 from src.utils.log import Log
 from src.utils.utils import Utils
 from src.ui.ui import ConfigWindow
-from src.core.clock_manager import run_clock
 from src.utils.const import Key, AppPath
-from src.extend.email_server import send_email_by_result
 from ui.init_ui import init_ui
 import chinese_calendar as calendar
 
@@ -114,108 +113,16 @@ Auto-Clock - 自动打卡工具
             Log.error("使用 --help 参数查看所有可用选项")
             sys.exit(1)
 
-        config_data = Utils.read_dict_from_json(AppPath.DataJson)
-        send_email_success = False
-        send_email_failed = False
-        email = None
-        if config_data and config_data.get(Key.NotificationEmail):
-            email = config_data.get(Key.NotificationEmail)
-            send_email_success = config_data.get(Key.SendEmailWhenSuccess, False)
-            send_email_failed = config_data.get(Key.SendEmailWhenFailed, False)
+        if not args.task_id:
+            Log.error("任务模式需要提供task_id参数")
+            sys.exit(1)
 
-        ok = False
-        error = None
-        task = None
-        try:
-            if args.task_id:
-                task = Utils.find_task(args.task_id)
-                Log.info(f"Auto Clock Get Task Id: {args.task_id}")
-                if not task:
-                    raise Exception(f"Task ID: {args.task_id} not found.")
-                operation = task.get(Key.Operation)
-                day_time_type = task.get(Key.DayTimeType)
-                trigger_type = task.get(Key.TriggerType)
+        runner_cmd = Utils.get_runner_execute_file()
+        cmd = f"{runner_cmd} --task_id={args.task_id}"
+        if args.headless:
+            cmd += " --headless"
 
-                # SmartHoliday: only execute on Chinese workdays within the same year
-                if trigger_type == Key.SmartHoliday:
-                    try:
-                        start_year = int(task.get(Key.Year))
-                        start_month = int(task.get(Key.Month))
-                        start_day = int(task.get(Key.Day))
-                        start_date = date(start_year, start_month, start_day)
-                    except Exception as e:
-                        Log.error(f"SmartHoliday task missing or invalid start date, skip execution. Error: {e}")
-                        sys.exit(1)
-
-                    today = date.today()
-
-                    # Only valid in the creation year
-                    if today.year != start_year:
-                        Log.info(f"SmartHoliday task year mismatch (task: {start_year}, today: {today.year}), skip execution.")
-                        sys.exit(0)
-
-                    # Only valid between start_date and end of year
-                    if today < start_date or today > date(start_year, 12, 31):
-                        Log.info(f"SmartHoliday: today {today} is out of valid range [{start_date}, {start_year}-12-31], skip execution.")
-                        sys.exit(0)
-
-                    # Only execute on Chinese workdays (including adjusted workdays/holidays)
-                    if not calendar.is_workday(today):
-                        Log.info(f"SmartHoliday: today {today} is not a Chinese workday, skip execution.")
-                        sys.exit(0)
-
-                if day_time_type and day_time_type == Key.Random:
-                    time_offset = task.get(Key.TimeOffset, 0)
-                    random_sec = random.randint(0, time_offset)
-                    Log.info(f"将等待 {random_sec} 秒...")
-                    time.sleep(random_sec)
-                    Log.info("等待结束！继续执行任务")
-
-                Log.info(f"Task ID: {args.task_id} has found, Task Name: {task.get(Key.TaskName)} Operation: {operation}")
-                start_time = datetime.now()
-
-                if operation == Key.AutoClock:
-                    ok, error = run_clock()
-                elif operation == Key.ShutDownSystem:
-                    ok, error = run_windows_shutdown(30)
-                elif operation == Key.SystemSleep:
-                    ok, error = run_windows_sleep(30)
-                elif operation == Key.DisconnectNetwork:
-                    # 对于断网操作，Windows和Linux都支持延迟参数
-                    ok, error = disconnect_network(30)
-                elif operation == Key.ConnectNetwork:
-                    # 对于联网操作，通常不需要延迟
-                    ok, error = connect_network()
-                    # 联网后等待10秒，确保网络已经稳定连接
-                    if ok:
-                        Log.info("网络连接成功，等待10秒确保网络稳定...")
-                        time.sleep(10)
-                        Log.info("网络稳定等待完成")
-                else:
-                    error = f"No operation specified for: {operation}"
-
-                end_time = datetime.now()
-                elapsed_time = end_time - start_time
-                elapsed_sec = elapsed_time.total_seconds()
-                task[Key.CostTime] = int(elapsed_sec)
-                Log.info(f"Finish Task. Start at: {start_time} End at: {end_time} Cost time: {elapsed_sec} sec")
-            else:
-                exit()
-        except Exception as e:
-            error = str(e)
-
-        config_data = Utils.read_dict_from_json(AppPath.DataJson)
-        if not config_data or not config_data.get(Key.NotificationEmail): exit()
-
-        email = config_data.get(Key.NotificationEmail)
-        send_email_success = config_data.get(Key.SendEmailWhenSuccess, False)
-        send_email_failed = config_data.get(Key.SendEmailWhenFailed, False)
-
-        if not error: error = "Unknow Error"
-        Log.info(f"task: {task}")
-        Log.info(f"ok: {ok} error: {error}")
-        Log.info(f"email: {email} send_email_success: {send_email_success} send_email_failed: {send_email_failed}")
-        
-        send_email_by_result(task=task, email=email, send_email_success=send_email_success,
-                             send_email_failed=send_email_failed, ok=ok, error=error)
+        Log.info(f"Delegate task to runner: {cmd}")
+        result = subprocess.run(cmd, shell=True)
+        sys.exit(result.returncode)
     Log.close()

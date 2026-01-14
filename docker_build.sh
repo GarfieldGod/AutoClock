@@ -26,27 +26,34 @@ fi
 # 在容器中打包
 echo ""
 echo "步骤2: 在Docker容器中打包应用..."
-docker run --rm -v "$(pwd)/dist:/build/dist" auto-clock-builder
+HOST_UID=$(id -u)
+HOST_GID=$(id -g)
+docker run --rm \
+  -e HOST_UID=${HOST_UID} \
+  -e HOST_GID=${HOST_GID} \
+  -v "$(pwd)/dist:/build/dist" \
+  auto-clock-builder
 
 if [ $? -ne 0 ]; then
     echo "打包失败"
     exit 1
 fi
 
-# 检查结果
-if [ -f "dist/auto_clock" ]; then
+# 检查结果 (onedir)
+if [ -f "dist/auto_clock/auto_clock" ]; then
     echo ""
     echo "================================"
     echo "打包成功！"
     echo "================================"
     echo ""
-    echo "可执行文件: dist/auto_clock"
+    echo "可执行文件: dist/auto_clock/auto_clock"
+    echo "Runner: dist/auto_clock/auto-clock-runner"
     echo ""
     echo "检查GLIBC依赖:"
-    ldd dist/auto_clock | grep GLIBC || echo "  (无GLIBC依赖显示)"
+    ldd dist/auto_clock/auto_clock | grep GLIBC || echo "  (无GLIBC依赖显示)"
     echo ""
     echo "此版本应该可以在 Ubuntu 20.04+ 系统上运行"
 else
-    echo "打包失败，未找到可执行文件"
+    echo "打包失败，未找到可执行文件 dist/auto_clock/auto_clock"
     exit 1
 fi

@@ -15,6 +15,7 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
+    file \
     curl \
     wget \
     git \
@@ -59,4 +60,8 @@ RUN python3 -m pip install --upgrade pip && \
     python3 -m pip install pyinstaller
 
 # 构建脚本，并修复生成文件的权限
-CMD bash linux_build.sh && chmod -R 777 /build/dist
+ENV HOST_UID=1000
+ENV HOST_GID=1000
+
+# 构建脚本，并修复生成文件的权限/归属
+CMD bash linux_build.sh && chown -R ${HOST_UID}:${HOST_GID} /build/dist || true && chmod -R 775 /build/dist

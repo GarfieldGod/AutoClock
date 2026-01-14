@@ -9,6 +9,7 @@ from PyInstaller.building.build_main import Analysis, PYZ, EXE, COLLECT
 project_root = r"."
 # 主脚本路径
 main_script = os.path.join(project_root, "entry.py")
+runner_script = os.path.join(project_root, "src", "runner", "runner_main.py")
 ico = os.path.join(project_root, "icon.ico")
 
 # 依赖的额外文件
@@ -24,7 +25,7 @@ if os.path.exists(ico_dir):
 if os.path.exists(resource_path):
     extra_files.append((str(resource_path), os.path.join(".", "ui", "resource")))
 
-a = Analysis(
+a_ui = Analysis(
     [str(main_script)],
     pathex=[str(project_root)],
     binaries=[],
@@ -40,16 +41,33 @@ a = Analysis(
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=None)
+a_runner = Analysis(
+    [str(runner_script)],
+    pathex=[str(project_root)],
+    binaries=[],
+    datas=[],
+    hiddenimports=[],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=None,
+    noarchive=False,
+)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
+pyz_ui = PYZ(a_ui.pure, a_ui.zipped_data, cipher=None)
+pyz_runner = PYZ(a_runner.pure, a_runner.zipped_data, cipher=None)
+
+exe_ui = EXE(
+    pyz_ui,
+    a_ui.scripts,
     [],
-    name="auto_clock",  # exe 文件名
+    [],
+    [],
+    [],
+    name="auto_clock",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -57,6 +75,7 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
+    exclude_binaries=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -64,4 +83,44 @@ exe = EXE(
     entitlements_file=None,
     icon=ico,
     uac_admin=True
+)
+
+exe_runner = EXE(
+    pyz_runner,
+    a_runner.scripts,
+    [],
+    [],
+    [],
+    [],
+    name="auto-clock-runner",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=True,
+    exclude_binaries=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=ico,
+    uac_admin=True
+)
+
+coll = COLLECT(
+    exe_ui,
+    exe_runner,
+    a_ui.binaries,
+    a_ui.zipfiles,
+    a_ui.datas,
+    a_runner.binaries,
+    a_runner.zipfiles,
+    a_runner.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="auto_clock"
 )

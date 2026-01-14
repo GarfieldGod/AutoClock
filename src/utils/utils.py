@@ -153,6 +153,35 @@ class Utils:
                 return f'{python_path} {script_path}'
 
     @staticmethod
+    def get_runner_execute_file():
+        """Return the command prefix used to execute runner.
+
+        - Frozen (PyInstaller): resolve sibling executable: auto-clock-runner(.exe)
+        - Dev: resolve venv python + src/runner/runner_main.py
+        """
+        if getattr(sys, 'frozen', False):
+            base_dir = Path(sys.executable).absolute().parent
+            runner_name = "auto-clock-runner.exe" if os.name == 'nt' else "auto-clock-runner"
+            runner_path = (base_dir / runner_name).absolute()
+            if not runner_path.exists():
+                raise Exception(f"Runner executable not found: {runner_path}")
+            if os.name == 'nt':
+                return f'"{str(runner_path)}"'
+            return str(runner_path)
+
+        if os.name == 'nt':
+            python_exe = Path(__file__).parent.parent.parent / ".venv" / "Scripts" / "python.exe"
+        else:
+            python_exe = Path(__file__).parent.parent.parent / ".venv" / "bin" / "python"
+        runner_script = Path(__file__).parent.parent.parent / "src" / "runner" / "runner_main.py"
+
+        python_path = str(python_exe)
+        script_path = str(runner_script)
+        if os.name == 'nt':
+            return f'"{python_path}" "{script_path}"'
+        return f'{python_path} {script_path}'
+
+    @staticmethod
     def replace_signs(string):
         ret = (string.
                replace(":", "_").
