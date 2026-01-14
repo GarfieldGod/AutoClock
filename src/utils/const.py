@@ -65,6 +65,7 @@ class Key:
     Unknown: str = "Unknown"
     Empty: str = ""
     LinuxUserName: str = "LinuxUserName"
+    LinuxDisplay: str = "linux_display"
     CheckLinuxCredentialsOnPlanCreate: str = "check_linux_credentials_on_plan_create"
 
 @dataclass

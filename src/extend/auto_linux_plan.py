@@ -77,9 +77,11 @@ def create_crontab_entry(task_name, task_id, trigger_type, day=None, time=None):
     home_dir = os.path.expanduser("~")
     path_env = os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')
     user = os.environ.get('USER', os.environ.get('LOGNAME', 'user'))
+    config_data = Utils.read_dict_from_json(AppPath.DataJson) or {}
+    display = config_data.get(Key.LinuxDisplay, ':0')
     
     # 构建完整的命令，包含环境变量设置
-    command = f'PATH={path_env} HOME={home_dir} USER={user} DISPLAY=:1 {runner_cmd} --task_id={task_id}'
+    command = f'PATH={path_env} HOME={home_dir} USER={user} DISPLAY={display} {runner_cmd} --task_id={task_id}'
     
     # 解析时间
     try:
