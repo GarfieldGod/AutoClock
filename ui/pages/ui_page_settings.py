@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushBu
 from src.utils.const import Key
 from ui.main_window.auto_clock_window import AutoClockPageContent, AutoClockContainer
 from ui.custom.custom_style import get_group_css
-from ui.custom.custom_widget import CheckBox, LineEdit, PasswordLineEdit, FileSelectLineEdit
+from ui.custom.custom_widget import CheckBox, LineEdit, PasswordLineEdit, FileSelectLineEdit, ComboBox
 import platform
 
 
@@ -29,6 +29,7 @@ class ToolSettingsPage(AutoClockPageContent):
         self.input_save_widget.append(ssh_config.ssh_password)
         self.input_save_widget.append(ssh_config.ssh_use_private_key)
         self.input_save_widget.append(ssh_config.ssh_private_key_path)
+        self.input_save_widget.append(ssh_config.ssh_server_platform)
 
 
 class ToolConfigContainer(AutoClockContainer):
@@ -67,6 +68,12 @@ class SshConfigContainer(AutoClockContainer):
         self.ssh_use_private_key = CheckBox(Key.SshUsePrivateKey, default=False)
         self.ssh_private_key_path = FileSelectLineEdit(Key.SshPrivateKeyPath, default="")
 
+        if platform.system() == "Windows":
+            platform_items = ["---", "Linux"]
+        else:
+            platform_items = ["---"]
+        self.ssh_server_platform = ComboBox(Key.SshServerPlatform, items=platform_items, default="---")
+
         self.btn_connect = QPushButton("连接")
         self.btn_disconnect = QPushButton("断开")
 
@@ -87,6 +94,7 @@ class SshConfigContainer(AutoClockContainer):
             layout.addLayout(row)
 
         _add_row("是否启用SSH", self.ssh_enabled)
+        _add_row("目标平台", self.ssh_server_platform)
         _add_row("IP", self.ssh_host)
         _add_row("账户名", self.ssh_username)
         _add_row("密码", self.ssh_password)
@@ -115,6 +123,14 @@ class SshConfigContainer(AutoClockContainer):
     def _on_connect_clicked(self):
         try:
             w = self.window()
+
+            if platform.system() == "Windows":
+                if str(self.ssh_server_platform.currentText()).strip() != "Linux":
+                    from src.ui.ui_message import MessageBox
+                    MessageBox("请先选择合法的平台类型!")
+                    self._update_lock_state(False)
+                    return
+
             if hasattr(w, "connect_remote_and_reload"):
                 ok, err = w.connect_remote_and_reload()
                 if not ok:
@@ -148,6 +164,7 @@ class SshConfigContainer(AutoClockContainer):
         # 连接成功后锁定配置，避免连接过程中修改 host/user 等导致状态混乱
         for w in [
             self.ssh_enabled,
+            self.ssh_server_platform,
             self.ssh_host,
             self.ssh_username,
             self.ssh_password,

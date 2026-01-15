@@ -74,6 +74,7 @@ class Key:
     SshPassword: str = "ssh_password"
     SshUsePrivateKey: str = "ssh_use_private_key"
     SshPrivateKeyPath: str = "ssh_private_key_path"
+    SshServerPlatform: str = "ssh_server_platform"
 
 
 @dataclass

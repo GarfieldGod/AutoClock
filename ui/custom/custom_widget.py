@@ -1,5 +1,5 @@
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QLineEdit, QCheckBox, QWidget, QHBoxLayout, QPushButton, QFileDialog
+from PyQt5.QtWidgets import QLineEdit, QCheckBox, QWidget, QHBoxLayout, QPushButton, QFileDialog, QComboBox
 
 from src.utils.const import Key
 from src.utils.utils import QtUI, Utils
@@ -87,6 +87,36 @@ class CheckBox(QCheckBox):
 
     def set_value(self, value):
         self.setChecked(value)
+
+
+class ComboBox(QComboBox):
+    def __init__(self, key, items: list[str], default: str = "", parent=None):
+        super(ComboBox, self).__init__(parent)
+        self.key = key
+        self.default = default
+        self._set_func = None
+
+        for it in items:
+            self.addItem(str(it))
+
+        self.currentTextChanged.connect(self._on_changed)
+
+    def _on_changed(self, _text: str):
+        if self._set_func is not None:
+            self._set_func(self.key, self.currentText())
+
+    def value_changed_func(self, set_func):
+        self._set_func = set_func
+
+    def set_value(self, value):
+        text = str(value) if value is not None else ""
+        idx = self.findText(text)
+        if idx >= 0:
+            self.setCurrentIndex(idx)
+            return
+        idx = self.findText(str(self.default))
+        if idx >= 0:
+            self.setCurrentIndex(idx)
 
 class TaskListWidget(QWidget):
     def __init__(self, task, parent=None):

@@ -5,6 +5,7 @@ from PyQt5.QtCore import QSize, QTimer, QThread, pyqtSignal
 
 from src.utils.const import AppPath, Key
 from src.utils.utils import Utils
+from src.utils.log import Log
 from ui.template.ui_main_window import MainWindow
 from ui.template.ui_page import Container, PageContent
 from src.extend.ssh_client import SshClient, SshConfig
@@ -31,6 +32,9 @@ class AutoClockWindow(MainWindow):
 
         self._remote_connected = False
         self._remote_host = None
+        self._remote_home_dir = None
+        self._remote_data_root_abs = None
+        self._remote_ssh_cfg: SshConfig | None = None
         self.load_data_json()
 
         self.write_timer = QTimer(self)
@@ -134,6 +138,9 @@ class AutoClockWindow(MainWindow):
 
             self._remote_connected = True
             self._remote_host = host
+            self._remote_home_dir = home_dir
+            self._remote_data_root_abs = remote_root_abs
+            self._remote_ssh_cfg = cfg
             self.load_data_json()
             self._reload_pages()
             self.refresh_ssh_status()
@@ -141,12 +148,18 @@ class AutoClockWindow(MainWindow):
         except Exception as e:
             self._remote_connected = False
             self._remote_host = None
+            self._remote_home_dir = None
+            self._remote_data_root_abs = None
+            self._remote_ssh_cfg = None
             self.refresh_ssh_status()
             return False, str(e)
 
     def disconnect_remote_and_reload(self):
         self._remote_connected = False
         self._remote_host = None
+        self._remote_home_dir = None
+        self._remote_data_root_abs = None
+        self._remote_ssh_cfg = None
 
         AppPath.DataRoot = self._local_data_root
         AppPath.DataJson = self._local_data_json
@@ -206,9 +219,33 @@ class AutoClockWindow(MainWindow):
                 merged.update(self.save_data)
 
             Utils.write_dict_to_file(AppPath.DataJson, merged)
+
+            # 自动同步：连接远端时，把本地 remote_cache/data.json 写回远端 data 目录
+            if self.is_remote_connected():
+                self._sync_remote_file(local_path=AppPath.DataJson, remote_filename="data.json")
         except Exception as e:
             print(e)
         self.write_timer.stop()
+
+    def _sync_remote_file(self, local_path: str, remote_filename: str) -> bool:
+        try:
+            if not self.is_remote_connected():
+                return False
+            if not self._remote_ssh_cfg or not self._remote_data_root_abs:
+                return False
+            if not os.path.exists(local_path):
+                return False
+
+            remote_path = f"{self._remote_data_root_abs}/{remote_filename}"
+            with SshClient(self._remote_ssh_cfg) as ssh:
+                ssh.upload_file(local_path, remote_path)
+            return True
+        except Exception as e:
+            Log.error(f"sync remote file failed: {remote_filename}, error: {e}")
+            return False
+
+    def sync_remote_tasks_json(self) -> bool:
+        return self._sync_remote_file(local_path=AppPath.TasksJson, remote_filename="tasks.json")
 
     def get_save_data(self, key, default=None):
         try:

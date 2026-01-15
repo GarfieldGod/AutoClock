@@ -60,6 +60,24 @@ class TaskListContainer(Container):
         self.init_ui_layout()
         self.update_plan_list()
 
+    def _get_cfg(self, key, default=None):
+        try:
+            w = self.window()
+            if hasattr(w, "get_save_data"):
+                return w.get_save_data(key, default)
+        except Exception:
+            pass
+        return default
+
+    def _sync_tasks_if_needed(self):
+        try:
+            w = self.window()
+            if hasattr(w, "is_remote_connected") and w.is_remote_connected():
+                if hasattr(w, "sync_remote_tasks_json"):
+                    w.sync_remote_tasks_json()
+        except Exception:
+            pass
+
     def init_ui_layout(self):
         group_system = QGroupBox(f"System Plan List")
         group_system.setStyleSheet(get_group_css({}))
@@ -166,6 +184,7 @@ class TaskListContainer(Container):
         if task is None: return
         self.task_list.append(task)
         Utils.write_dict_to_file(AppPath.TasksJson, self.task_list)
+        self._sync_tasks_if_needed()
         self.update_plan_list()
 
     def do_create_plan(self):
@@ -176,18 +195,18 @@ class TaskListContainer(Container):
                 task_to_json, task_list_to_create = UiFunc.parse_ui_value_to_task(value)
                 for task in task_list_to_create:
                     if platform.system() == "Windows":
-                        ssh_enabled = bool(self.get_data_func(Key.SshEnabled, False)) if self.get_data_func else False
+                        ssh_enabled = bool(self._get_cfg(Key.SshEnabled, False))
                         if ssh_enabled:
                             w = self.window()
                             if not (hasattr(w, "is_remote_connected") and w.is_remote_connected()):
                                 MessageBox("请先在 Settings -> SSH Settings 点击“连接”，连接成功后再创建远端计划任务")
                                 return
 
-                            host = str(self.get_data_func(Key.SshHost, "") or "").strip()
-                            username = str(self.get_data_func(Key.SshUsername, "") or "").strip()
-                            password = str(self.get_data_func(Key.SshPassword, "") or "")
-                            use_pkey = bool(self.get_data_func(Key.SshUsePrivateKey, False))
-                            pkey_path = str(self.get_data_func(Key.SshPrivateKeyPath, "") or "").strip()
+                            host = str(self._get_cfg(Key.SshHost, "") or "").strip()
+                            username = str(self._get_cfg(Key.SshUsername, "") or "").strip()
+                            password = str(self._get_cfg(Key.SshPassword, "") or "")
+                            use_pkey = bool(self._get_cfg(Key.SshUsePrivateKey, False))
+                            pkey_path = str(self._get_cfg(Key.SshPrivateKeyPath, "") or "").strip()
                             version = Utils.get_app_version_from_config_json(default="")
                             if not host or not username or not version:
                                 raise Exception("SSH配置不完整或无法获取版本号")
@@ -257,18 +276,18 @@ class TaskListContainer(Container):
                 return
 
             if platform.system() == "Windows":
-                ssh_enabled = bool(self.get_data_func(Key.SshEnabled, False)) if self.get_data_func else False
+                ssh_enabled = bool(self._get_cfg(Key.SshEnabled, False))
                 if ssh_enabled:
                     w = self.window()
                     if not (hasattr(w, "is_remote_connected") and w.is_remote_connected()):
                         MessageBox("请先在 Settings -> SSH Settings 点击“连接”，连接成功后再删除远端计划任务")
                         return
 
-                    host = str(self.get_data_func(Key.SshHost, "") or "").strip()
-                    username = str(self.get_data_func(Key.SshUsername, "") or "").strip()
-                    password = str(self.get_data_func(Key.SshPassword, "") or "")
-                    use_pkey = bool(self.get_data_func(Key.SshUsePrivateKey, False))
-                    pkey_path = str(self.get_data_func(Key.SshPrivateKeyPath, "") or "").strip()
+                    host = str(self._get_cfg(Key.SshHost, "") or "").strip()
+                    username = str(self._get_cfg(Key.SshUsername, "") or "").strip()
+                    password = str(self._get_cfg(Key.SshPassword, "") or "")
+                    use_pkey = bool(self._get_cfg(Key.SshUsePrivateKey, False))
+                    pkey_path = str(self._get_cfg(Key.SshPrivateKeyPath, "") or "").strip()
                     version = Utils.get_app_version_from_config_json(default="")
                     if not host or not username or not version:
                         raise Exception("SSH配置不完整或无法获取版本号")
@@ -322,6 +341,7 @@ class TaskListContainer(Container):
 
             self.task_list.remove(delete_task)
             Utils.write_dict_to_file(AppPath.TasksJson, self.task_list)
+            self._sync_tasks_if_needed()
             self.update_plan_list()
 
         except Exception as e:

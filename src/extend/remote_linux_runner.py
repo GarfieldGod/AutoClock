@@ -86,7 +86,13 @@ class RemoteLinuxRunner:
         return self._ssh.exec(cmd)
 
     def cron_create(self, task: dict) -> Tuple[int, str, str]:
-        tmp_dir = posixpath.join(self._layout.app_root, "servers", ".tmp")
+        code, out, err = self._ssh.exec("echo $HOME")
+        home_dir = (out or "").strip()
+        if code != 0 or not home_dir:
+            msg = (err or out or "").strip() or "failed to resolve remote $HOME"
+            return 2, "", msg
+
+        tmp_dir = posixpath.join(home_dir, ".local", "share", "auto-clock", "servers", ".tmp")
         self._ssh.exec(f"mkdir -p {tmp_dir}")
         remote_task_path = posixpath.join(tmp_dir, f"task_{task.get('task_id', 'unknown')}.json")
 
