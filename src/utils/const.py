@@ -50,13 +50,13 @@ class Key:
     ShowWebPage: str = "show_web_page"
 
     AutoClock: str = "Auto Clock"
-    ShutDownWindows: str = "Shut Down"
-    WindowsSleep: str = "Sleep"
+    ShutDownSystem: str = "Shut Down"
+    SystemSleep: str = "Sleep"
     # 新增断网和联网操作类型
     DisconnectNetwork: str = "Disconnect Network"
     ConnectNetwork: str = "Connect Network"
 
-    DefaultWindowsPlanName: str = "AutoClock_Windows_Plan"
+    DefaultSystemPlanName: str = "AutoClock_System_Plan"
     DefaultLinuxPlanName: str = "AutoClock_Linux_Plan"
     Unknown: str = "Unknown"
     Empty: str = ""
@@ -87,6 +87,7 @@ class AppPath:
     else:
         ProjectRoot = os.path.abspath(".")
     ConfigJson: str = os.path.join(ProjectRoot, "config.json")
+    UiResourcePath: str = os.path.join(ProjectRoot, "ui", "resource")
 
 @dataclass
 class WebPath:

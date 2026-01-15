@@ -14,11 +14,14 @@ ico = os.path.join(project_root, "icon.ico")
 extra_files = []
 config_dir = os.path.join(project_root, "config.json")
 ico_dir = os.path.join(project_root, "icon.ico")
+resource_path = os.path.join(project_root, "ui", "resource")
 
 if os.path.exists(config_dir):
     extra_files.append((str(config_dir), "."))
 if os.path.exists(ico_dir):
     extra_files.append((str(ico_dir), "."))
+if os.path.exists(resource_path):
+    extra_files.append((str(resource_path), os.path.join(".", "ui", "resource")))
 
 a = Analysis(
     [str(main_script)],

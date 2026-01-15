@@ -1,4 +1,5 @@
 import copy
+import platform
 from datetime import datetime, timedelta
 
 from PyQt5.QtGui import QIcon
@@ -12,10 +13,10 @@ from src.utils.utils import Utils, QtUI
 from src.ui.ui_message import MessageBox
 
 
-class WindowsPlanDialog(QDialog):
+class SystemPlanDialog(QDialog):
     trigger_types = [Key.Once, Key.Multiple, Key.Daily, Key.Weekly, Key.Monthly]
     day_time_types = [Key.Specify, Key.Random]
-    operation_types = [Key.AutoClock, Key.ShutDownWindows, Key.WindowsSleep, Key.DisconnectNetwork, Key.ConnectNetwork]
+    operation_types = [Key.AutoClock, Key.ShutDownSystem, Key.SystemSleep, Key.DisconnectNetwork, Key.ConnectNetwork]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -26,7 +27,7 @@ class WindowsPlanDialog(QDialog):
             self.locale = QLocale(QLocale.English)
             # 任务名
             self.plan_name_edit = QLineEdit()
-            self.plan_name_edit.setText(Key.DefaultWindowsPlanName)
+            self.plan_name_edit.setText(Key.DefaultSystemPlanName)
             # 触发类型
             self.trigger_type = QComboBox()
             self.trigger_type.addItems(self.trigger_types)
@@ -66,6 +67,14 @@ class WindowsPlanDialog(QDialog):
             layout_setting.addLayout(widget_line_3)
             layout_setting.addLayout(widget_line_4)
             widget_layout.addWidget(widget_setting)
+
+            if platform.system() == "Linux":
+                info_widget = QWidget()
+                info_layout = QHBoxLayout(info_widget)
+                info_label = QLabel("注意: Linux计划任务将使用crontab实现，可能需要sudo权限")
+                info_label.setStyleSheet("color: orange; font-size: 12px;")
+                info_layout.addWidget(info_label)
+                widget_layout.addWidget(info_widget)
 
             # 特定DayTime
             self.widget_specify_day_time_selector = QWidget()
