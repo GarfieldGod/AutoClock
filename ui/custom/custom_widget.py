@@ -2,7 +2,8 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QLineEdit, QCheckBox, QWidget, QHBoxLayout, QPushButton, QFileDialog, QComboBox
 
 from src.utils.const import Key
-from src.utils.utils import QtUI, Utils
+from src.utils.utils import Utils
+from src.utils.qt_ui import QtUI
 from src.utils.const import AppPath
 
 

@@ -10,9 +10,6 @@ from pathlib import Path
 from webdriver_manager.core.driver_cache import DriverCacheManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QLabel
-
 from src.utils.log import Log
 from src.utils.const import Key, AppPath
 
@@ -268,23 +265,3 @@ class Utils:
                 os.environ["WDM_ARCH"] = old_wdm_arch
 
         return True, driver_path
-
-class QtUI:
-    @staticmethod
-    def create_label(message, size=11, length=150, family="Arial", width_policy=None, height_policy=None,
-                     alignment=None, fixed_width=None, fixed_height=None):
-        label = QLabel(message)
-        font = QFont()
-        font.setFamily(family)
-        font.setPointSize(size)
-        label.setFont(font)
-        label.setFixedWidth(length)
-        if width_policy is not None and height_policy is not None:
-            label.setSizePolicy(width_policy, height_policy)
-        if alignment is not None:
-            label.setAlignment(alignment)
-        if fixed_width is not None:
-            label.setFixedWidth(fixed_width)
-        if fixed_height is not None:
-            label.setFixedHeight(fixed_height)
-        return label

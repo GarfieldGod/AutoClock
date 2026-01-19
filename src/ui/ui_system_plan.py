@@ -9,7 +9,8 @@ from PyQt5.QtWidgets import QDialogButtonBox, QVBoxLayout, QComboBox, QWidget, Q
 from src.utils.log import Log
 from src.utils.const import Key
 from src.ui.ui_calendar import Calendar, WeeklyCalendar
-from src.utils.utils import Utils, QtUI
+from src.utils.utils import Utils
+from src.utils.qt_ui import QtUI
 from src.ui.ui_message import MessageBox
 
 

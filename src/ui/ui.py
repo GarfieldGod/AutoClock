@@ -15,7 +15,8 @@ from src.utils.log import Log
 from src.utils.const import Key, AppPath, WebPath
 from src.ui.ui_message import MessageBox
 from src.utils.update import VersionCheckThread
-from src.utils.utils import Utils, QtUI
+from src.utils.utils import Utils
+from src.utils.qt_ui import QtUI
 from src.core.clock_manager import ClockManager, run_clock
 
 # 根据操作系统导入相应的模块

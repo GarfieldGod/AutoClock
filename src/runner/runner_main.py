@@ -75,21 +75,21 @@ def main(argv: list[str] | None = None) -> int:
             driver_root = str(Path(args.driver_root).expanduser().resolve())
             Path(driver_root).mkdir(parents=True, exist_ok=True)
 
-            # 1) Prefer webdriver_manager if present (保持项目既有逻辑)
+            # 1) Prefer project existing logic (Utils.download_edge_web_driver)
             try:
-                from webdriver_manager.core.driver_cache import DriverCacheManager
-                from webdriver_manager.microsoft import EdgeChromiumDriverManager
+                from src.utils.utils import Utils
 
-                cache = DriverCacheManager(root_dir=driver_root)
-                path = EdgeChromiumDriverManager(
-                    url="https://msedgedriver.microsoft.com/",
-                    latest_release_url="https://msedgedriver.microsoft.com/LATEST_RELEASE",
-                    cache_manager=cache,
-                ).install()
-                print(path)
-                return 0
-            except ModuleNotFoundError:
-                # Fallback without extra dependencies
+                old_driver_root = AppPath.DriversRoot
+                try:
+                    AppPath.DriversRoot = driver_root
+                    ok, result = Utils.download_edge_web_driver()
+                finally:
+                    AppPath.DriversRoot = old_driver_root
+
+                if ok:
+                    print(result)
+                    return 0
+            except Exception:
                 pass
 
             # 2) Fallback: download zip and extract to driver_root/.wdm/drivers/edgedriver/linux64/<version>/
