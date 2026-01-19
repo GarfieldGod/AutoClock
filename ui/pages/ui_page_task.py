@@ -78,6 +78,55 @@ class TaskListContainer(Container):
         except Exception:
             pass
 
+    def _read_tasks(self):
+        try:
+            w = self.window()
+            if hasattr(w, "read_tasks_list"):
+                return w.read_tasks_list()
+        except Exception:
+            pass
+        return Utils.read_dict_from_json(AppPath.TasksJson)
+
+    def _write_tasks(self, tasks) -> bool:
+        try:
+            w = self.window()
+            if hasattr(w, "write_tasks_list"):
+                return bool(w.write_tasks_list(tasks))
+        except Exception:
+            pass
+        try:
+            Utils.write_dict_to_file(AppPath.TasksJson, tasks)
+            return True
+        except Exception:
+            return False
+
+    def _read_config(self) -> dict:
+        try:
+            w = self.window()
+            if hasattr(w, "data_store") and hasattr(w.data_store, "read_config"):
+                data = w.data_store.read_config()
+                return data if isinstance(data, dict) else {}
+        except Exception:
+            pass
+        try:
+            data = Utils.read_dict_from_json(AppPath.DataJson)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _write_config(self, config: dict) -> bool:
+        try:
+            w = self.window()
+            if hasattr(w, "data_store") and hasattr(w.data_store, "write_config"):
+                return bool(w.data_store.write_config(config))
+        except Exception:
+            pass
+        try:
+            Utils.write_dict_to_file(AppPath.DataJson, config)
+            return True
+        except Exception:
+            return False
+
     def init_ui_layout(self):
         group_system = QGroupBox(f"System Plan List")
         group_system.setStyleSheet(get_group_css({}))
@@ -153,7 +202,7 @@ class TaskListContainer(Container):
 
             if not is_valid:
                 try:
-                    config = Utils.read_dict_from_json(AppPath.DataJson) or {}
+                    config = self._read_config() or {}
                 except Exception as e:
                     Log.error(str(e))
                     config = {}
@@ -174,7 +223,7 @@ class TaskListContainer(Container):
                     elif choice == "不再提示":
                         config[Key.CheckLinuxCredentialsOnPlanCreate] = False
                         try:
-                            Utils.write_dict_to_file(AppPath.DataJson, config)
+                            self._write_config(config)
                         except Exception as e:
                             Log.error(str(e))
                     # "直接创建" 以及 "不再提示" 最终都继续创建计划
@@ -183,8 +232,7 @@ class TaskListContainer(Container):
 
         if task is None: return
         self.task_list.append(task)
-        Utils.write_dict_to_file(AppPath.TasksJson, self.task_list)
-        self._sync_tasks_if_needed()
+        self._write_tasks(self.task_list)
         self.update_plan_list()
 
     def do_create_plan(self):
@@ -340,8 +388,7 @@ class TaskListContainer(Container):
                 raise Exception("System not supported")
 
             self.task_list.remove(delete_task)
-            Utils.write_dict_to_file(AppPath.TasksJson, self.task_list)
-            self._sync_tasks_if_needed()
+            self._write_tasks(self.task_list)
             self.update_plan_list()
 
         except Exception as e:
@@ -350,7 +397,7 @@ class TaskListContainer(Container):
 
     def update_plan_list(self):
         try:
-            dict_list = Utils.read_dict_from_json(AppPath.TasksJson)
+            dict_list = self._read_tasks()
             if dict_list is None: return
 
             self.system_plan_list.clear()

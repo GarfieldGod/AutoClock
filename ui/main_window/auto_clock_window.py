@@ -11,6 +11,7 @@ from ui.template.ui_main_window import MainWindow
 from ui.template.ui_page import Container, PageContent
 from src.extend.ssh_client import SshClient, SshConfig
 from src.store.settings_store import SettingsStore
+from src.store.data_store import LocalDataStore, RemoteDataStore, IDataStore
 
 
 class AutoClockWindow(MainWindow):
@@ -39,6 +40,8 @@ class AutoClockWindow(MainWindow):
         self._remote_home_dir = None
         self._remote_data_root_abs = None
         self._remote_ssh_cfg: SshConfig | None = None
+
+        self._data_store: IDataStore = LocalDataStore()
 
         self.load_data_json()
 
@@ -90,27 +93,7 @@ class AutoClockWindow(MainWindow):
         if use_pkey and not _is_non_empty(pkey_path):
             return False, "启用私钥但未选择私钥文件"
 
-        cache_root = Path(self._local_data_root).parent / "remote_cache" / Utils.replace_signs(host)
-        cache_data_root = cache_root / "data"
-        cache_data_root.mkdir(parents=True, exist_ok=True)
-
-        # 注意：SFTP 不会展开 ~，必须使用绝对路径。
         try:
-            def _ensure_json_file(local_target: Path, default_obj, expected_type) -> tuple[bool, bool, str | None]:
-                try:
-                    need_upload = False
-                    if not local_target.exists() or local_target.stat().st_size == 0:
-                        Utils.write_dict_to_file(str(local_target), default_obj)
-                        return True, True, None
-
-                    data_any = Utils.read_dict_from_json(str(local_target))
-                    if not isinstance(data_any, expected_type):
-                        Utils.write_dict_to_file(str(local_target), default_obj)
-                        need_upload = True
-                    return True, need_upload, None
-                except Exception as e:
-                    return False, False, str(e)
-
             cfg = SshConfig(
                 host=host,
                 username=username,
@@ -118,130 +101,34 @@ class AutoClockWindow(MainWindow):
                 pkey_path=pkey_path if use_pkey else None,
                 timeout_sec=10,
             )
-            with SshClient(cfg) as ssh:
-                code, out, err = ssh.exec("echo ok", timeout_sec=5)
-                if code != 0 or "ok" not in out:
-                    return False, (err or out or "SSH连接失败").strip()
+            remote_app_root_override = _safe_str(self.get_save_data(Key.SshRemoteAppRoot, "")).strip()
+            store = RemoteDataStore(
+                ssh_cfg=cfg,
+                host=host,
+                local_data_root=self._local_data_root,
+                remote_app_root_override=remote_app_root_override,
+            )
+            ok2, err2 = store.bootstrap()
+            if not ok2:
+                return False, err2
+            if not store.cache_data_root:
+                return False, "远端缓存目录初始化失败"
+            if not store.remote_app_root_abs or not store.remote_data_root_abs:
+                return False, "远端目录初始化失败"
 
-                # 获取远端 HOME，用于拼接绝对路径给 SFTP
-                code, home_out, home_err = ssh.exec("echo $HOME", timeout_sec=5)
-                home_dir = (home_out or "").strip()
-                if code != 0 or not home_dir.startswith("/"):
-                    return False, (home_err or home_out or "无法获取远端 HOME 目录").strip()
+            AppPath.DataRoot = str(store.cache_data_root)
+            AppPath.DataJson = str(Path(store.cache_data_root) / "data.json")
+            AppPath.TasksJson = str(Path(store.cache_data_root) / "tasks.json")
+            AppPath.RunnerResultJson = str(Path(store.cache_data_root) / "runner_result.json")
 
-                remote_app_root_override = _safe_str(self.get_save_data(Key.SshRemoteAppRoot, "")).strip()
-                if remote_app_root_override:
-                    if not remote_app_root_override.startswith("/"):
-                        return False, f"远端AppRoot必须为绝对路径(以/开头)：{remote_app_root_override}"
-                    remote_app_root_abs = remote_app_root_override.rstrip("/")
-                else:
-                    script = "sh -lc 'base=\"${XDG_DATA_HOME:-$HOME/.local/share}\"; echo \"${base}/auto-clock\"'"
-                    code, out, err = ssh.exec(script, timeout_sec=5)
-                    remote_app_root_abs = (out or "").strip().rstrip("/")
-                    if code != 0 or not remote_app_root_abs.startswith("/"):
-                        msg = (err or out or "").strip() or "无法解析远端 AppRoot"
-                        return False, msg
-
-                remote_data_root_abs = f"{remote_app_root_abs}/data"
-
-                sftp = ssh.sftp()
-                downloaded_data_json = False
-                for name in ["data.json", "tasks.json", "runner_result.json"]:
-                    try:
-                        local_target = cache_data_root / name
-                        sftp.get(f"{remote_data_root_abs}/{name}", str(local_target))
-                        if name == "data.json":
-                            downloaded_data_json = True
-                        if local_target.exists() and local_target.stat().st_size == 0:
-                            return False, f"下载远端文件为空：{name}，本地缓存：{local_target}"
-                    except FileNotFoundError:
-                        try:
-                            local_target = cache_data_root / name
-                            if local_target.exists():
-                                local_target.unlink()
-                        except Exception:
-                            pass
-                    except Exception as e:
-                        return False, f"下载远端文件失败：{name}，错误：{e}"
-
-                base_data = {}
-                cache_data_json = cache_data_root / "data.json"
-                if downloaded_data_json and cache_data_json.exists() and cache_data_json.stat().st_size > 0:
-                    data_any = Utils.read_dict_from_json(str(cache_data_json))
-                    if isinstance(data_any, dict):
-                        base_data.update(data_any)
-
-                if Key.UserName not in base_data:
-                    base_data[Key.UserName] = ""
-                if Key.UserPassword not in base_data:
-                    base_data[Key.UserPassword] = ""
-                if Key.DriverPath not in base_data:
-                    base_data[Key.DriverPath] = ""
-                if Key.CaptchaRetryTimes not in base_data:
-                    base_data[Key.CaptchaRetryTimes] = 5
-                if Key.CaptchaToleranceAngle not in base_data:
-                    base_data[Key.CaptchaToleranceAngle] = 5
-                if Key.AlwaysRetry not in base_data:
-                    base_data[Key.AlwaysRetry] = False
-                if Key.ShowWebPage not in base_data:
-                    base_data[Key.ShowWebPage] = False
-                if Key.NotificationEmail not in base_data:
-                    base_data[Key.NotificationEmail] = ""
-                if Key.SendEmailWhenSuccess not in base_data:
-                    base_data[Key.SendEmailWhenSuccess] = False
-                if Key.SendEmailWhenFailed not in base_data:
-                    base_data[Key.SendEmailWhenFailed] = False
-                if Key.LinuxDisplay not in base_data:
-                    base_data[Key.LinuxDisplay] = ":0"
-                if Key.CheckLinuxCredentialsOnPlanCreate not in base_data:
-                    base_data[Key.CheckLinuxCredentialsOnPlanCreate] = True
-
-                init_targets: list[tuple[str, Path]] = []
-
-                ok3, need_up, err3 = _ensure_json_file(cache_data_root / "data.json", base_data, dict)
-                if not ok3:
-                    return False, f"初始化本地缓存文件失败：data.json，错误：{err3}"
-                if need_up:
-                    init_targets.append(("data.json", cache_data_root / "data.json"))
-
-                ok3, need_up, err3 = _ensure_json_file(cache_data_root / "tasks.json", [], list)
-                if not ok3:
-                    return False, f"初始化本地缓存文件失败：tasks.json，错误：{err3}"
-                if need_up:
-                    init_targets.append(("tasks.json", cache_data_root / "tasks.json"))
-
-                ok3, need_up, err3 = _ensure_json_file(cache_data_root / "runner_result.json", {}, dict)
-                if not ok3:
-                    return False, f"初始化本地缓存文件失败：runner_result.json，错误：{err3}"
-                if need_up:
-                    init_targets.append(("runner_result.json", cache_data_root / "runner_result.json"))
-
-                for remote_name, local_path in init_targets:
-                    try:
-                        ssh.upload_file(str(local_path), f"{remote_data_root_abs}/{remote_name}")
-                    except Exception as e:
-                        return False, f"初始化远端文件失败：{remote_name}，错误：{e}"
-
-            cache_data_json = cache_data_root / "data.json"
-            if not cache_data_json.exists():
-                return False, "远端 data.json 不存在或无法下载"
-
-            data = Utils.read_dict_from_json(str(cache_data_json))
-            if not isinstance(data, dict):
-                return False, "远端数据加载失败：data.json 无法解析"
-
-            AppPath.DataRoot = str(cache_data_root)
-            AppPath.DataJson = str(cache_data_root / "data.json")
-            AppPath.TasksJson = str(cache_data_root / "tasks.json")
-            AppPath.RunnerResultJson = str(cache_data_root / "runner_result.json")
-
-            AppPath.update_remote(remote_app_root_abs)
+            AppPath.update_remote(store.remote_app_root_abs)
 
             self._remote_connected = True
             self._remote_host = host
-            self._remote_home_dir = home_dir
-            self._remote_data_root_abs = remote_data_root_abs
+            self._remote_home_dir = store.remote_home_dir
+            self._remote_data_root_abs = store.remote_data_root_abs
             self._remote_ssh_cfg = cfg
+            self._data_store = store
             self.load_data_json()
             self._reload_pages()
             self.refresh_ssh_status()
@@ -261,6 +148,8 @@ class AutoClockWindow(MainWindow):
         self._remote_home_dir = None
         self._remote_data_root_abs = None
         self._remote_ssh_cfg = None
+
+        self._data_store = LocalDataStore()
 
         AppPath.clear_remote()
 
@@ -411,30 +300,23 @@ class AutoClockWindow(MainWindow):
 
             # 自动同步：连接远端时，把本地 remote_cache/data.json 写回远端 data 目录
             if self.is_remote_connected():
-                self._sync_remote_file(local_path=AppPath.DataJson, remote_filename="data.json")
+                self._data_store.sync_file(local_path=AppPath.DataJson, remote_filename="data.json")
         except Exception as e:
             print(e)
         self.write_timer.stop()
 
-    def _sync_remote_file(self, local_path: str, remote_filename: str) -> bool:
-        try:
-            if not self.is_remote_connected():
-                return False
-            if not self._remote_ssh_cfg or not self._remote_data_root_abs:
-                return False
-            if not os.path.exists(local_path):
-                return False
-
-            remote_path = f"{self._remote_data_root_abs}/{remote_filename}"
-            with SshClient(self._remote_ssh_cfg) as ssh:
-                ssh.upload_file(local_path, remote_path)
-            return True
-        except Exception as e:
-            Log.error(f"sync remote file failed: {remote_filename}, error: {e}")
-            return False
-
     def sync_remote_tasks_json(self) -> bool:
-        return self._sync_remote_file(local_path=AppPath.TasksJson, remote_filename="tasks.json")
+        return self._data_store.sync_file(local_path=AppPath.TasksJson, remote_filename="tasks.json")
+
+    @property
+    def data_store(self) -> IDataStore:
+        return self._data_store
+
+    def write_tasks_list(self, tasks) -> bool:
+        return self._data_store.write_tasks(tasks)
+
+    def read_tasks_list(self):
+        return self._data_store.read_tasks()
 
     def get_save_data(self, key, default=None):
         try:
