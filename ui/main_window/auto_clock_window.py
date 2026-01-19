@@ -10,6 +10,7 @@ from src.utils.log import Log
 from ui.template.ui_main_window import MainWindow
 from ui.template.ui_page import Container, PageContent
 from src.extend.ssh_client import SshClient, SshConfig
+from src.store.settings_store import SettingsStore
 
 
 class AutoClockWindow(MainWindow):
@@ -26,7 +27,8 @@ class AutoClockWindow(MainWindow):
         )
 
         self.save_data = {}
-        self._local_save_data: dict = {}
+        self._settings = SettingsStore()
+        self._settings.load()
         self._local_data_root = AppPath.DataRoot
         self._local_data_json = AppPath.DataJson
         self._local_tasks_json = AppPath.TasksJson
@@ -38,8 +40,7 @@ class AutoClockWindow(MainWindow):
         self._remote_data_root_abs = None
         self._remote_ssh_cfg: SshConfig | None = None
 
-        self._load_local_data_json()
-        self.save_data = dict(self._local_save_data)
+        self.load_data_json()
 
         self.write_timer = QTimer(self)
         self.write_timer.setInterval(1000)
@@ -370,20 +371,6 @@ class AutoClockWindow(MainWindow):
         except Exception as e:
             print(e)
 
-    def _load_local_data_json(self):
-        try:
-            self._local_save_data = {}
-            if not os.path.exists(self._local_data_json):
-                return False
-
-            data = Utils.read_dict_from_json(self._local_data_json)
-            if isinstance(data, dict):
-                self._local_save_data.update(data)
-            return True
-        except Exception:
-            self._local_save_data = {}
-            return False
-
     @staticmethod
     def _ssh_keys() -> set[str]:
         return {
@@ -400,22 +387,12 @@ class AutoClockWindow(MainWindow):
     def write_data_json(self):
         print("write_data_json")
         try:
-            # 1) 先落盘本地配置（包含 ssh_*）
             try:
-                local_existing = {}
-                if os.path.exists(self._local_data_json):
-                    existing = Utils.read_dict_from_json(self._local_data_json)
-                    if isinstance(existing, dict):
-                        local_existing = existing
-                local_merged = {}
-                local_merged.update(local_existing)
-                if isinstance(self._local_save_data, dict):
-                    local_merged.update(self._local_save_data)
-                Utils.write_dict_to_file(self._local_data_json, local_merged)
-            except Exception as e:
-                Log.error(f"write local data.json failed: {e}")
+                self._settings.save()
+            except Exception:
+                pass
 
-            # 2) 再落盘当前数据（本地或远端）；远端时剔除 ssh_* 避免污染
+            # 再落盘当前数据（本地或远端）；远端时剔除 ssh_* 避免污染
             file_data = {}
             if os.path.exists(AppPath.DataJson):
                 existing = Utils.read_dict_from_json(AppPath.DataJson)
@@ -462,9 +439,7 @@ class AutoClockWindow(MainWindow):
     def get_save_data(self, key, default=None):
         try:
             if key in self._ssh_keys():
-                if not isinstance(self._local_save_data, dict):
-                    return default
-                return self._local_save_data.get(key, default)
+                return self._settings.get(key, default)
             if not isinstance(self.save_data, dict):
                 return default
             return self.save_data.get(key, default)
@@ -479,7 +454,7 @@ class AutoClockWindow(MainWindow):
     def set_save_data(self, key, value):
         try:
             if key in self._ssh_keys():
-                self._local_save_data[key] = value
+                self._settings.set(key, value)
             else:
                 self.save_data[key] = value
 
