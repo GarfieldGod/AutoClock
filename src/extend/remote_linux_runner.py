@@ -8,7 +8,7 @@ from src.extend.ssh_client import SshClient
 
 @dataclass
 class RemoteLinuxLayout:
-    app_root: str = "~/.local/share/auto-clock"
+    app_root: str = "${HOME}/.local/share/auto-clock"
 
     @property
     def servers_root(self) -> str:
@@ -86,13 +86,22 @@ class RemoteLinuxRunner:
         return self._ssh.exec(cmd)
 
     def cron_create(self, task: dict) -> Tuple[int, str, str]:
-        code, out, err = self._ssh.exec("echo $HOME")
-        home_dir = (out or "").strip()
-        if code != 0 or not home_dir:
-            msg = (err or out or "").strip() or "failed to resolve remote $HOME"
-            return 2, "", msg
+        app_root = self._layout.app_root
+        if app_root.startswith("~") or "${HOME}" in app_root:
+            code, out, err = self._ssh.exec("echo $HOME")
+            home_dir = (out or "").strip()
+            if code != 0 or not home_dir.startswith("/"):
+                msg = (err or out or "").strip() or "failed to resolve remote $HOME"
+                return 2, "", msg
 
-        tmp_dir = posixpath.join(home_dir, ".local", "share", "auto-clock", "servers", ".tmp")
+            if app_root.startswith("~"):
+                app_root = home_dir + app_root[1:]
+            app_root = app_root.replace("${HOME}", home_dir)
+
+        if not str(app_root).startswith("/"):
+            return 2, "", f"remote app_root must be absolute: {app_root}"
+
+        tmp_dir = posixpath.join(app_root, "servers", ".tmp")
         self._ssh.exec(f"mkdir -p {tmp_dir}")
         remote_task_path = posixpath.join(tmp_dir, f"task_{task.get('task_id', 'unknown')}.json")
 

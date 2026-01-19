@@ -224,10 +224,18 @@ class Utils:
             return None
 
     @staticmethod
-    def download_edge_web_driver():
+    def download_edge_web_driver(target_os: str | None = None, target_arch: str | None = None):
         try:
-            if os.path.exists(AppPath.DriversRoot):
-                os.makedirs(AppPath.DriversRoot,exist_ok=True)
+            old_wdm_os = os.environ.get("WDM_OS")
+            old_wdm_arch = os.environ.get("WDM_ARCH")
+
+            if target_os:
+                os.environ["WDM_OS"] = str(target_os)
+            if target_arch:
+                os.environ["WDM_ARCH"] = str(target_arch)
+
+            if not os.path.exists(AppPath.DriversRoot):
+                os.makedirs(AppPath.DriversRoot, exist_ok=True)
 
             driver_cache = DriverCacheManager(
                 root_dir=AppPath.DriversRoot
@@ -247,6 +255,17 @@ class Utils:
         except Exception as e:
             Log.error(f'DownLoad driver failed: {e}')
             return False, str(e)
+
+        finally:
+            if old_wdm_os is None:
+                os.environ.pop("WDM_OS", None)
+            else:
+                os.environ["WDM_OS"] = old_wdm_os
+
+            if old_wdm_arch is None:
+                os.environ.pop("WDM_ARCH", None)
+            else:
+                os.environ["WDM_ARCH"] = old_wdm_arch
 
         return True, driver_path
 

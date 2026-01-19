@@ -138,7 +138,11 @@ class WebDriverContainer(AutoClockContainer):
 
             QApplication.processEvents()
             Log.info("开始手动下载Edge Driver...")
-            ok, result = Utils.download_edge_web_driver()
+            w = self.window()
+            if hasattr(w, "is_remote_connected") and w.is_remote_connected() and hasattr(w, "ensure_remote_driver"):
+                ok, result = w.ensure_remote_driver()
+            else:
+                ok, result = Utils.download_edge_web_driver()
 
             if ok:
                 self.driver_path.setText(result)

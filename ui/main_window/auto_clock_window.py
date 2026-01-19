@@ -109,13 +109,26 @@ class AutoClockWindow(MainWindow):
                 if code != 0 or not home_dir.startswith("/"):
                     return False, (home_err or home_out or "无法获取远端 HOME 目录").strip()
 
-                remote_root_abs = f"{home_dir}/.local/share/auto-clock/data"
+                remote_app_root_override = _safe_str(self.get_save_data(Key.SshRemoteAppRoot, "")).strip()
+                if remote_app_root_override:
+                    if not remote_app_root_override.startswith("/"):
+                        return False, f"远端AppRoot必须为绝对路径(以/开头)：{remote_app_root_override}"
+                    remote_app_root_abs = remote_app_root_override.rstrip("/")
+                else:
+                    script = "sh -lc 'base=\"${XDG_DATA_HOME:-$HOME/.local/share}\"; echo \"${base}/auto-clock\"'"
+                    code, out, err = ssh.exec(script, timeout_sec=5)
+                    remote_app_root_abs = (out or "").strip().rstrip("/")
+                    if code != 0 or not remote_app_root_abs.startswith("/"):
+                        msg = (err or out or "").strip() or "无法解析远端 AppRoot"
+                        return False, msg
+
+                remote_data_root_abs = f"{remote_app_root_abs}/data"
 
                 sftp = ssh.sftp()
                 for name in ["data.json", "tasks.json", "runner_result.json"]:
                     try:
                         local_target = cache_data_root / name
-                        sftp.get(f"{remote_root_abs}/{name}", str(local_target))
+                        sftp.get(f"{remote_data_root_abs}/{name}", str(local_target))
                         if local_target.exists() and local_target.stat().st_size == 0:
                             return False, f"下载远端文件为空：{name}，本地缓存：{local_target}"
                     except FileNotFoundError:
@@ -136,10 +149,12 @@ class AutoClockWindow(MainWindow):
             AppPath.TasksJson = str(cache_data_root / "tasks.json")
             AppPath.RunnerResultJson = str(cache_data_root / "runner_result.json")
 
+            AppPath.update_remote(remote_app_root_abs)
+
             self._remote_connected = True
             self._remote_host = host
             self._remote_home_dir = home_dir
-            self._remote_data_root_abs = remote_root_abs
+            self._remote_data_root_abs = remote_data_root_abs
             self._remote_ssh_cfg = cfg
             self.load_data_json()
             self._reload_pages()
@@ -161,6 +176,8 @@ class AutoClockWindow(MainWindow):
         self._remote_data_root_abs = None
         self._remote_ssh_cfg = None
 
+        AppPath.clear_remote()
+
         AppPath.DataRoot = self._local_data_root
         AppPath.DataJson = self._local_data_json
         AppPath.TasksJson = self._local_tasks_json
@@ -169,6 +186,35 @@ class AutoClockWindow(MainWindow):
         self.load_data_json()
         self._reload_pages()
         self.refresh_ssh_status()
+
+    def ensure_remote_driver(self) -> tuple[bool, str | None]:
+        try:
+            if not self.is_remote_connected():
+                return False, "SSH未连接"
+            if not self._remote_ssh_cfg:
+                return False, "SSH配置缺失"
+            if not AppPath.RemoteDriversRoot:
+                return False, "远端DriversRoot未初始化"
+
+            # Windows->Linux SSH: need Linux driver binary on remote.
+            ok, local_driver_path = Utils.download_edge_web_driver(target_os="linux", target_arch="x64")
+            if not ok:
+                return False, str(local_driver_path)
+            local_driver_path = str(local_driver_path)
+            if not os.path.exists(local_driver_path):
+                return False, f"本地driver文件不存在：{local_driver_path}"
+
+            remote_driver_path = f"{AppPath.RemoteDriversRoot}/msedgedriver"
+            with SshClient(self._remote_ssh_cfg) as ssh:
+                ssh.exec(f"mkdir -p {AppPath.RemoteDriversRoot}")
+                ssh.upload_file(local_driver_path, remote_driver_path)
+                ssh.exec(f"chmod +x {remote_driver_path}")
+
+            self.set_save_data(Key.DriverPath, remote_driver_path)
+            self.write_data_json()
+            return True, remote_driver_path
+        except Exception as e:
+            return False, str(e)
 
     def _reload_pages(self):
         try:

@@ -1,4 +1,5 @@
 import os
+import posixpath
 import sys
 from pathlib import Path
 from dataclasses import dataclass
@@ -75,6 +76,7 @@ class Key:
     SshUsePrivateKey: str = "ssh_use_private_key"
     SshPrivateKeyPath: str = "ssh_private_key_path"
     SshServerPlatform: str = "ssh_server_platform"
+    SshRemoteAppRoot: str = "ssh_remote_app_root"
 
 
 @dataclass
@@ -105,6 +107,36 @@ class AppPath:
         ProjectRoot = os.path.abspath(".")
     ConfigJson: str = os.path.join(ProjectRoot, "config.json")
     UiResourcePath: str = os.path.join(ProjectRoot, "ui", "resource")
+
+    RemoteAppRoot: str | None = None
+    RemoteLogRoot: str | None = None
+    RemoteDataRoot: str | None = None
+    RemoteBackupRoot: str | None = None
+    RemoteDriversRoot: str | None = None
+    RemoteScreenshotRoot: str | None = None
+
+    @staticmethod
+    def update_remote(app_root_abs: str):
+        app_root_abs = str(app_root_abs or "").strip()
+        if not app_root_abs.startswith("/"):
+            raise ValueError(f"remote app_root must be an absolute path: {app_root_abs}")
+
+        AppPath.RemoteAppRoot = app_root_abs.rstrip("/")
+        AppPath.RemoteLogRoot = posixpath.join(AppPath.RemoteAppRoot, "log")
+        AppPath.RemoteDataRoot = posixpath.join(AppPath.RemoteAppRoot, "data")
+        AppPath.RemoteBackupRoot = posixpath.join(AppPath.RemoteAppRoot, "backup")
+        AppPath.RemoteDriversRoot = posixpath.join(AppPath.RemoteAppRoot, "driver")
+        AppPath.RemoteScreenshotRoot = posixpath.join(AppPath.RemoteAppRoot, "screenshot")
+
+    @staticmethod
+    def clear_remote():
+        AppPath.RemoteAppRoot = None
+        AppPath.RemoteLogRoot = None
+        AppPath.RemoteDataRoot = None
+        AppPath.RemoteBackupRoot = None
+        AppPath.RemoteDriversRoot = None
+        AppPath.RemoteScreenshotRoot = None
+
 
 @dataclass
 class WebPath:
