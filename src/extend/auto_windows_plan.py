@@ -181,6 +181,8 @@ def delete_scheduled_task(task_name: str):
         if "成功" in result.stdout or result.returncode == 0:
             Log.info(f"已删除计划任务：{task_name}")
             return True, None
+
+        return False, result.stderr
     except Exception as e:
         # 如果异常信息表明任务不存在，也视为成功
         if "找不到指定的任务" in str(e) or "not found" in str(e):

@@ -9,10 +9,13 @@ from selenium.webdriver.edge.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+from src.utils.const import Key, AppPath
 from src.utils.log import Log
 from src.core.clock import clock
 from src.core.login import login
 from src.core.captcha import captcha, Selectors
+from src.utils.utils import Utils
+
 
 @dataclass
 class Config:
@@ -25,6 +28,7 @@ class Config:
     wait_time: int = 2
     always_retry: bool = False
     show_web_page: bool = True
+    auto_update_driver: bool = True
 
 class AutoClock:
     def __init__(self, config: Config):
@@ -37,12 +41,35 @@ class AutoClock:
         self.remote_url = config.remote_url
         self.always_retry = config.always_retry
         self.show_web_page = config.show_web_page
+        self.auto_update_driver = config.auto_update_driver
         self.driver = None
         try:
             self.driver = self.create_driver()
         except Exception as e:
             Log.error(f"Create driver error: {e}")
-            raise Exception(f"Failed to create WebDriver: {e}")
+
+            if 'version' in str(e):
+                try:
+                    if not self.auto_update_driver:
+                        raise Exception("Edge version not support, need to redownload driver.")
+
+                    ok, driver_path = Utils.download_edge_web_driver()
+                    if not ok:
+                        raise Exception("Redownload Edge web driver error.")
+
+                    self.driver_path = driver_path
+                    self.driver = self.create_driver()
+
+                    if self.driver is not None:
+                        data = Utils.read_dict_from_json(AppPath.DataJson)
+                        data[Key.DriverPath] = self.driver_path
+                        Utils.write_dict_to_file(AppPath.DataJson, data)
+
+                except Exception as e:
+                    Log.error(f"Redownload and Create driver error: {e}")
+                    raise Exception(f"Failed to create WebDriver: {e}")
+            else:
+                raise Exception(f"Failed to create WebDriver: {e}")
 
     def create_driver(self):
         # 创建浏览器驱动
@@ -138,9 +165,24 @@ class AutoClock:
             if not ret:
                 Log.info(f"Captcha failed, Always retry: {self.always_retry}")
                 if self.always_retry:
+                    round_count = 0
                     while not ret:
+                        round_count += 1
+                        # 每次auto_captcha调用已经是一轮完整的尝试(captcha_attempts次)
+                        # 一轮失败后，重启浏览器进行新一轮尝试
+                        Log.info(f"第{round_count}轮尝试失败(每轮{self.captcha_attempts}次)，重启浏览器进行新一轮尝试...")
+                        self.quit()
+                        time.sleep(2)
+                        try:
+                            self.driver = self.create_driver()
+                            ret_login = self.auto_login()
+                            Log.info(f"重启浏览器后登录结果: {format(ret_login)}")
+                        except Exception as e:
+                            Log.error(f"重启浏览器失败: {e}")
+                            return False, f"重启浏览器失败: {e}"
+                        
                         ret, error = self.auto_captcha()
-                        Log.info(f"Captcha retry: {format(ret)}, error: {error}")
+                        Log.info(f"第{round_count + 1}轮Captcha结果: {format(ret)}, error: {error}")
                 else:
                     return ret, error
             return self.do_clock()
