@@ -26,6 +26,7 @@ class AutoClockWindow(MainWindow):
         )
 
         self.save_data = {}
+        self._local_save_data: dict = {}
         self._local_data_root = AppPath.DataRoot
         self._local_data_json = AppPath.DataJson
         self._local_tasks_json = AppPath.TasksJson
@@ -36,7 +37,9 @@ class AutoClockWindow(MainWindow):
         self._remote_home_dir = None
         self._remote_data_root_abs = None
         self._remote_ssh_cfg: SshConfig | None = None
-        self.load_data_json()
+
+        self._load_local_data_json()
+        self.save_data = dict(self._local_save_data)
 
         self.write_timer = QTimer(self)
         self.write_timer.setInterval(1000)
@@ -92,6 +95,21 @@ class AutoClockWindow(MainWindow):
 
         # 注意：SFTP 不会展开 ~，必须使用绝对路径。
         try:
+            def _ensure_json_file(local_target: Path, default_obj, expected_type) -> tuple[bool, bool, str | None]:
+                try:
+                    need_upload = False
+                    if not local_target.exists() or local_target.stat().st_size == 0:
+                        Utils.write_dict_to_file(str(local_target), default_obj)
+                        return True, True, None
+
+                    data_any = Utils.read_dict_from_json(str(local_target))
+                    if not isinstance(data_any, expected_type):
+                        Utils.write_dict_to_file(str(local_target), default_obj)
+                        need_upload = True
+                    return True, need_upload, None
+                except Exception as e:
+                    return False, False, str(e)
+
             cfg = SshConfig(
                 host=host,
                 username=username,
@@ -126,16 +144,82 @@ class AutoClockWindow(MainWindow):
                 remote_data_root_abs = f"{remote_app_root_abs}/data"
 
                 sftp = ssh.sftp()
+                downloaded_data_json = False
                 for name in ["data.json", "tasks.json", "runner_result.json"]:
                     try:
                         local_target = cache_data_root / name
                         sftp.get(f"{remote_data_root_abs}/{name}", str(local_target))
+                        if name == "data.json":
+                            downloaded_data_json = True
                         if local_target.exists() and local_target.stat().st_size == 0:
                             return False, f"下载远端文件为空：{name}，本地缓存：{local_target}"
                     except FileNotFoundError:
-                        pass
+                        try:
+                            local_target = cache_data_root / name
+                            if local_target.exists():
+                                local_target.unlink()
+                        except Exception:
+                            pass
                     except Exception as e:
                         return False, f"下载远端文件失败：{name}，错误：{e}"
+
+                base_data = {}
+                cache_data_json = cache_data_root / "data.json"
+                if downloaded_data_json and cache_data_json.exists() and cache_data_json.stat().st_size > 0:
+                    data_any = Utils.read_dict_from_json(str(cache_data_json))
+                    if isinstance(data_any, dict):
+                        base_data.update(data_any)
+
+                if Key.UserName not in base_data:
+                    base_data[Key.UserName] = ""
+                if Key.UserPassword not in base_data:
+                    base_data[Key.UserPassword] = ""
+                if Key.DriverPath not in base_data:
+                    base_data[Key.DriverPath] = ""
+                if Key.CaptchaRetryTimes not in base_data:
+                    base_data[Key.CaptchaRetryTimes] = 5
+                if Key.CaptchaToleranceAngle not in base_data:
+                    base_data[Key.CaptchaToleranceAngle] = 5
+                if Key.AlwaysRetry not in base_data:
+                    base_data[Key.AlwaysRetry] = False
+                if Key.ShowWebPage not in base_data:
+                    base_data[Key.ShowWebPage] = False
+                if Key.NotificationEmail not in base_data:
+                    base_data[Key.NotificationEmail] = ""
+                if Key.SendEmailWhenSuccess not in base_data:
+                    base_data[Key.SendEmailWhenSuccess] = False
+                if Key.SendEmailWhenFailed not in base_data:
+                    base_data[Key.SendEmailWhenFailed] = False
+                if Key.LinuxDisplay not in base_data:
+                    base_data[Key.LinuxDisplay] = ":0"
+                if Key.CheckLinuxCredentialsOnPlanCreate not in base_data:
+                    base_data[Key.CheckLinuxCredentialsOnPlanCreate] = True
+
+                init_targets: list[tuple[str, Path]] = []
+
+                ok3, need_up, err3 = _ensure_json_file(cache_data_root / "data.json", base_data, dict)
+                if not ok3:
+                    return False, f"初始化本地缓存文件失败：data.json，错误：{err3}"
+                if need_up:
+                    init_targets.append(("data.json", cache_data_root / "data.json"))
+
+                ok3, need_up, err3 = _ensure_json_file(cache_data_root / "tasks.json", [], list)
+                if not ok3:
+                    return False, f"初始化本地缓存文件失败：tasks.json，错误：{err3}"
+                if need_up:
+                    init_targets.append(("tasks.json", cache_data_root / "tasks.json"))
+
+                ok3, need_up, err3 = _ensure_json_file(cache_data_root / "runner_result.json", {}, dict)
+                if not ok3:
+                    return False, f"初始化本地缓存文件失败：runner_result.json，错误：{err3}"
+                if need_up:
+                    init_targets.append(("runner_result.json", cache_data_root / "runner_result.json"))
+
+                for remote_name, local_path in init_targets:
+                    try:
+                        ssh.upload_file(str(local_path), f"{remote_data_root_abs}/{remote_name}")
+                    except Exception as e:
+                        return False, f"初始化远端文件失败：{remote_name}，错误：{e}"
 
             cache_data_json = cache_data_root / "data.json"
             if not cache_data_json.exists():
@@ -270,19 +354,68 @@ class AutoClockWindow(MainWindow):
 
     def load_data_json(self):
         try:
+            self.save_data = {}
             if not os.path.exists(AppPath.DataJson):
-                self.save_data = {}
                 return False
 
             data = Utils.read_dict_from_json(AppPath.DataJson)
             if isinstance(data, dict):
+                if self.is_remote_connected():
+                    for k in self._ssh_keys():
+                        try:
+                            data.pop(k, None)
+                        except Exception:
+                            pass
                 self.save_data.update(data)
         except Exception as e:
             print(e)
 
+    def _load_local_data_json(self):
+        try:
+            self._local_save_data = {}
+            if not os.path.exists(self._local_data_json):
+                return False
+
+            data = Utils.read_dict_from_json(self._local_data_json)
+            if isinstance(data, dict):
+                self._local_save_data.update(data)
+            return True
+        except Exception:
+            self._local_save_data = {}
+            return False
+
+    @staticmethod
+    def _ssh_keys() -> set[str]:
+        return {
+            Key.SshEnabled,
+            Key.SshHost,
+            Key.SshUsername,
+            Key.SshPassword,
+            Key.SshUsePrivateKey,
+            Key.SshPrivateKeyPath,
+            Key.SshServerPlatform,
+            Key.SshRemoteAppRoot,
+        }
+
     def write_data_json(self):
         print("write_data_json")
         try:
+            # 1) 先落盘本地配置（包含 ssh_*）
+            try:
+                local_existing = {}
+                if os.path.exists(self._local_data_json):
+                    existing = Utils.read_dict_from_json(self._local_data_json)
+                    if isinstance(existing, dict):
+                        local_existing = existing
+                local_merged = {}
+                local_merged.update(local_existing)
+                if isinstance(self._local_save_data, dict):
+                    local_merged.update(self._local_save_data)
+                Utils.write_dict_to_file(self._local_data_json, local_merged)
+            except Exception as e:
+                Log.error(f"write local data.json failed: {e}")
+
+            # 2) 再落盘当前数据（本地或远端）；远端时剔除 ssh_* 避免污染
             file_data = {}
             if os.path.exists(AppPath.DataJson):
                 existing = Utils.read_dict_from_json(AppPath.DataJson)
@@ -293,6 +426,9 @@ class AutoClockWindow(MainWindow):
             merged.update(file_data)
             if isinstance(self.save_data, dict):
                 merged.update(self.save_data)
+            if self.is_remote_connected():
+                for k in self._ssh_keys():
+                    merged.pop(k, None)
 
             Utils.write_dict_to_file(AppPath.DataJson, merged)
 
@@ -325,6 +461,10 @@ class AutoClockWindow(MainWindow):
 
     def get_save_data(self, key, default=None):
         try:
+            if key in self._ssh_keys():
+                if not isinstance(self._local_save_data, dict):
+                    return default
+                return self._local_save_data.get(key, default)
             if not isinstance(self.save_data, dict):
                 return default
             return self.save_data.get(key, default)
@@ -338,7 +478,10 @@ class AutoClockWindow(MainWindow):
 
     def set_save_data(self, key, value):
         try:
-            self.save_data[key] = value
+            if key in self._ssh_keys():
+                self._local_save_data[key] = value
+            else:
+                self.save_data[key] = value
 
             self.write_timer.stop()
             self.write_timer.start()
