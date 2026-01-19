@@ -1,7 +1,12 @@
 import argparse
 import json
+import os
+import re
 import subprocess
 import sys
+import tempfile
+import urllib.request
+import zipfile
 from pathlib import Path
 
 if not getattr(sys, 'frozen', False) and __package__ is None:
@@ -13,6 +18,7 @@ from src.extend.auto_linux_plan import create_crontab_task, delete_crontab_task
 from src.runner.executor import run_task_by_id
 
 def main(argv: list[str] | None = None) -> int:
+    argv = argv if argv is not None else sys.argv[1:]
     parser = argparse.ArgumentParser(description="Auto-Clock Runner")
     subparsers = parser.add_subparsers(dest="command")
 
@@ -34,19 +40,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Servers root directory (default: ~/.local/share/auto-clock/servers)",
     )
 
-    args = parser.parse_args(argv)
+    driver_install_parser = subparsers.add_parser("driver_install", help="Install Edge WebDriver using webdriver_manager")
+    driver_install_parser.add_argument(
+        "--driver_root",
+        default=str(Path(AppPath.AppRoot) / "driver"),
+        help="Driver root directory (default: ~/.local/share/auto-clock/driver)",
+    )
 
     # Backward compatible flags: auto-clock-runner --task_id=xxx [--headless]
-    if args.command is None:
-        legacy_parser = argparse.ArgumentParser(add_help=False)
-        legacy_parser.add_argument("--task_id")
-        legacy_parser.add_argument("--headless", action="store_true")
-        legacy_args, _ = legacy_parser.parse_known_args(argv)
-        if legacy_args.task_id:
-            args.command = "run"
-            args.task_id = legacy_args.task_id
-            args.headless = legacy_args.headless
-        else:
+    legacy_parser = argparse.ArgumentParser(add_help=False)
+    legacy_parser.add_argument("--task_id")
+    legacy_parser.add_argument("--headless", action="store_true")
+    legacy_args, _ = legacy_parser.parse_known_args(argv)
+    if legacy_args.task_id:
+        normalized = ["run", "--task_id", legacy_args.task_id]
+        if legacy_args.headless:
+            normalized.append("--headless")
+        args = parser.parse_args(normalized)
+    else:
+        args = parser.parse_args(argv)
+        if args.command is None:
             parser.print_help()
             return 1
 
@@ -57,6 +70,71 @@ def main(argv: list[str] | None = None) -> int:
             if ok:
                 return 0
             return 2
+
+        if args.command == "driver_install":
+            driver_root = str(Path(args.driver_root).expanduser().resolve())
+            Path(driver_root).mkdir(parents=True, exist_ok=True)
+
+            # 1) Prefer webdriver_manager if present (保持项目既有逻辑)
+            try:
+                from webdriver_manager.core.driver_cache import DriverCacheManager
+                from webdriver_manager.microsoft import EdgeChromiumDriverManager
+
+                cache = DriverCacheManager(root_dir=driver_root)
+                path = EdgeChromiumDriverManager(
+                    url="https://msedgedriver.microsoft.com/",
+                    latest_release_url="https://msedgedriver.microsoft.com/LATEST_RELEASE",
+                    cache_manager=cache,
+                ).install()
+                print(path)
+                return 0
+            except ModuleNotFoundError:
+                # Fallback without extra dependencies
+                pass
+
+            # 2) Fallback: download zip and extract to driver_root/.wdm/drivers/edgedriver/linux64/<version>/
+            def _edge_version() -> str | None:
+                for cmd in ["microsoft-edge --version", "microsoft-edge-stable --version", "msedge --version"]:
+                    try:
+                        res = subprocess.run(cmd.split(), capture_output=True, text=True)
+                        out = (res.stdout or res.stderr or "").strip()
+                        m = re.search(r"(\d+\.\d+\.\d+\.\d+)", out)
+                        if m:
+                            return m.group(1)
+                    except Exception:
+                        continue
+                return None
+
+            def _latest_release() -> str:
+                url = "https://msedgedriver.microsoft.com/LATEST_RELEASE"
+                with urllib.request.urlopen(url, timeout=20) as resp:
+                    return resp.read().decode("utf-8").strip()
+
+            version = _edge_version() or _latest_release()
+            zip_url = f"https://msedgedriver.azureedge.net/{version}/edgedriver_linux64.zip"
+
+            target_dir = Path(driver_root) / ".wdm" / "drivers" / "edgedriver" / "linux64" / version
+            target_dir.mkdir(parents=True, exist_ok=True)
+            driver_path = target_dir / "msedgedriver"
+            if driver_path.exists():
+                print(str(driver_path))
+                return 0
+
+            with tempfile.TemporaryDirectory() as td:
+                tmp_zip = Path(td) / "edgedriver_linux64.zip"
+                urllib.request.urlretrieve(zip_url, tmp_zip)
+                with zipfile.ZipFile(tmp_zip, "r") as z:
+                    z.extractall(target_dir)
+
+            # zip contains msedgedriver at root; ensure executable bit
+            try:
+                st = os.stat(driver_path)
+                os.chmod(driver_path, st.st_mode | 0o111)
+            except Exception:
+                pass
+
+            print(str(driver_path))
+            return 0
 
         if args.command == "cron_create":
             task_path = Path(args.task_json_path)

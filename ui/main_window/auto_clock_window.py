@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 from PyQt5.QtCore import QSize, QTimer, QThread, pyqtSignal
@@ -196,19 +197,48 @@ class AutoClockWindow(MainWindow):
             if not AppPath.RemoteDriversRoot:
                 return False, "远端DriversRoot未初始化"
 
-            # Windows->Linux SSH: need Linux driver binary on remote.
-            ok, local_driver_path = Utils.download_edge_web_driver(target_os="linux", target_arch="x64")
-            if not ok:
-                return False, str(local_driver_path)
-            local_driver_path = str(local_driver_path)
-            if not os.path.exists(local_driver_path):
-                return False, f"本地driver文件不存在：{local_driver_path}"
+            if not AppPath.RemoteAppRoot:
+                return False, "远端AppRoot未初始化"
 
-            remote_driver_path = f"{AppPath.RemoteDriversRoot}/msedgedriver"
+            runner_path = f"{AppPath.RemoteAppRoot}/servers/current/auto-clock-runner"
+            cmd = f"{runner_path} driver_install --driver_root={AppPath.RemoteDriversRoot}"
+
             with SshClient(self._remote_ssh_cfg) as ssh:
-                ssh.exec(f"mkdir -p {AppPath.RemoteDriversRoot}")
-                ssh.upload_file(local_driver_path, remote_driver_path)
-                ssh.exec(f"chmod +x {remote_driver_path}")
+                code, out, err = ssh.exec(cmd)
+                if code != 0:
+                    msg = (err or out or "").strip() or "远端下载driver失败"
+                    return False, msg
+
+                raw = (out or "").strip()
+                lines = [ln.strip() for ln in raw.splitlines() if (ln or "").strip()]
+
+                # 兼容 runner stdout 混入日志：优先提取 .wdm 目录下的 msedgedriver 绝对路径
+                remote_driver_path = None
+                prefer = re.compile(r"^/.*?/\.wdm/drivers/.*?/msedgedriver$")
+                for ln in lines:
+                    if prefer.match(ln):
+                        remote_driver_path = ln
+                        break
+
+                if not remote_driver_path:
+                    # 次选：任何以 / 开头且以 msedgedriver 结尾的路径
+                    for ln in lines:
+                        if ln.startswith("/") and ln.endswith("/msedgedriver"):
+                            remote_driver_path = ln
+                            break
+
+                if not remote_driver_path:
+                    # 再次：在行内搜 /.../msedgedriver
+                    any_path = re.compile(r"(/[^\s'\"]+/msedgedriver)")
+                    for ln in lines:
+                        m = any_path.search(ln)
+                        if m:
+                            remote_driver_path = m.group(1)
+                            break
+
+                if not remote_driver_path:
+                    tail = lines[-1] if lines else ""
+                    return False, f"远端driver路径解析失败：{tail}"
 
             self.set_save_data(Key.DriverPath, remote_driver_path)
             self.write_data_json()
