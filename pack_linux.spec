@@ -48,7 +48,7 @@ a_runner = Analysis(
     [str(runner_script)],
     pathex=[str(project_root)],
     binaries=extra_binaries,
-    datas=[],
+    datas=extra_files,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

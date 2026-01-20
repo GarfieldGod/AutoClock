@@ -20,6 +20,11 @@ from src.runner.executor import run_task_by_id
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     parser = argparse.ArgumentParser(description="Auto-Clock Runner")
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Show runner version (read from bundled config.json)",
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     run_parser = subparsers.add_parser("run", help="Run a task by task_id")
@@ -59,6 +64,15 @@ def main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(normalized)
     else:
         args = parser.parse_args(argv)
+        if args.command is None and getattr(args, "version", False):
+            try:
+                from src.utils.utils import Utils
+
+                v = Utils.get_app_version_from_config_json(default="unknown")
+            except Exception:
+                v = "unknown"
+            print(v)
+            return 0
         if args.command is None:
             parser.print_help()
             return 1

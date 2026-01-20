@@ -145,4 +145,4 @@ class WebPath:
     AppProjectPath: str = "https://github.com/GarfieldGod/auto-clock"
     NeusoftKQPath: str = "https://kq.neusoft.com/"
     NeusoftKQLoginPath: str = "https://kq.neusoft.com/login"
-    LinuxRunnerDownloadUrlTemplate: str = "https://gitee.com/garfieldgod/auto-clock/releases/download/v{version}/linux-runner.tar.gz"
+    LinuxRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/linux-runner-{version}.tar.gz"

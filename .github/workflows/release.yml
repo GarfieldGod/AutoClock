@@ -130,6 +130,31 @@ jobs:
           echo "Artifacts structure:"
           find packaged -type f -name "*" | sort
 
+      - name: Build linux-runner tar.gz asset
+        run: |
+          set -e
+          VERSION="${{ needs.get-version.outputs.version }}"
+          ASSET_NAME="linux-runner-${VERSION}.tar.gz"
+          WORKDIR="runner_asset"
+          rm -rf "${WORKDIR}"
+          mkdir -p "${WORKDIR}"
+          # Find linux artifact folder (uploaded from build-linux job)
+          LINUX_DIR=$(find packaged -maxdepth 2 -type d -name "${{ needs.get-version.outputs.full_name }}-linux" | head -n 1)
+          if [ -z "${LINUX_DIR}" ]; then
+            echo "linux artifact dir not found" 1>&2
+            exit 1
+          fi
+          # Expect runner executable inside the linux artifact directory
+          RUNNER_PATH=$(find "${LINUX_DIR}" -type f -name "auto-clock-runner" | head -n 1)
+          if [ -z "${RUNNER_PATH}" ]; then
+            echo "auto-clock-runner not found in linux artifact" 1>&2
+            exit 1
+          fi
+          cp "${RUNNER_PATH}" "${WORKDIR}/auto-clock-runner"
+          # Bundle the same config.json version file for --version output
+          cp config.json "${WORKDIR}/config.json"
+          tar -czf "${ASSET_NAME}" -C "${WORKDIR}" auto-clock-runner config.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -142,5 +167,6 @@ jobs:
             **Build triggered by tag:** ${{ github.ref_name }}
           files: |
             packaged/**/*
+            linux-runner-${{ needs.get-version.outputs.version }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

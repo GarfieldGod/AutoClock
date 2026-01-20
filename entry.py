@@ -59,7 +59,11 @@ if __name__ == '__main__':
     )
     parser.add_argument("--task_id", help="指定要执行的任务ID")
     parser.add_argument("--headless", action="store_true", help="以无头模式运行（不显示图形界面）")
-    parser.add_argument("--version", action="version", version="%(prog)s 1.0")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {Utils.get_app_version_from_config_json(default='unknown')}",
+    )
     
     # 添加使用示例
     parser.description = """
