@@ -12,6 +12,7 @@ from ui.template.ui_page import Container, PageContent
 from src.extend.ssh_client import SshClient, SshConfig
 from src.store.settings_store import SettingsStore
 from src.store.data_store import LocalDataStore, RemoteDataStore, IDataStore
+from src.extend.remote_plan_service import RemotePlanService
 
 
 class AutoClockWindow(MainWindow):
@@ -40,6 +41,8 @@ class AutoClockWindow(MainWindow):
         self._remote_home_dir = None
         self._remote_data_root_abs = None
         self._remote_ssh_cfg: SshConfig | None = None
+
+        self._remote_plan_service: RemotePlanService | None = None
 
         self._data_store: IDataStore = LocalDataStore()
 
@@ -129,6 +132,8 @@ class AutoClockWindow(MainWindow):
             self._remote_data_root_abs = store.remote_data_root_abs
             self._remote_ssh_cfg = cfg
             self._data_store = store
+
+            self._remote_plan_service = RemotePlanService(lambda: self._remote_ssh_cfg)
             self.load_data_json()
             self._reload_pages()
             self.refresh_ssh_status()
@@ -139,6 +144,7 @@ class AutoClockWindow(MainWindow):
             self._remote_home_dir = None
             self._remote_data_root_abs = None
             self._remote_ssh_cfg = None
+            self._remote_plan_service = None
             self.refresh_ssh_status()
             return False, str(e)
 
@@ -148,6 +154,8 @@ class AutoClockWindow(MainWindow):
         self._remote_home_dir = None
         self._remote_data_root_abs = None
         self._remote_ssh_cfg = None
+
+        self._remote_plan_service = None
 
         self._data_store = LocalDataStore()
 
@@ -311,6 +319,10 @@ class AutoClockWindow(MainWindow):
     @property
     def data_store(self) -> IDataStore:
         return self._data_store
+
+    @property
+    def remote_plan_service(self) -> RemotePlanService | None:
+        return self._remote_plan_service
 
     def write_tasks_list(self, tasks) -> bool:
         return self._data_store.write_tasks(tasks)

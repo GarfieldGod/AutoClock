@@ -14,8 +14,6 @@ from ui.custom.custom_style import get_group_css
 from ui.custom.custom_widget import TaskListWidget
 from ui.template.ui_page import PageContent, Container
 from src.ui.ui_system_plan import SystemPlanDialog
-from src.extend.ssh_client import SshClient, SshConfig
-from src.extend.remote_linux_runner import RemoteLinuxRunner
 from src.utils.const import WebPath
 
 # 根据操作系统导入相应的模块
@@ -99,6 +97,15 @@ class TaskListContainer(Container):
             return True
         except Exception:
             return False
+
+    def _get_remote_plan_service(self):
+        try:
+            w = self.window()
+            if hasattr(w, "remote_plan_service"):
+                return w.remote_plan_service
+        except Exception:
+            pass
+        return None
 
     def _read_config(self) -> dict:
         try:
@@ -250,33 +257,10 @@ class TaskListContainer(Container):
                                 MessageBox("请先在 Settings -> SSH Settings 点击“连接”，连接成功后再创建远端计划任务")
                                 return
 
-                            host = str(self._get_cfg(Key.SshHost, "") or "").strip()
-                            username = str(self._get_cfg(Key.SshUsername, "") or "").strip()
-                            password = str(self._get_cfg(Key.SshPassword, "") or "")
-                            use_pkey = bool(self._get_cfg(Key.SshUsePrivateKey, False))
-                            pkey_path = str(self._get_cfg(Key.SshPrivateKeyPath, "") or "").strip()
-                            version = Utils.get_app_version_from_config_json(default="")
-                            if not host or not username or not version:
-                                raise Exception("SSH配置不完整或无法获取版本号")
-                            url = WebPath.LinuxRunnerDownloadUrlTemplate.format(version=version)
-                            ssh_cfg = SshConfig(
-                                host=host,
-                                username=username,
-                                password=None if use_pkey else password,
-                                pkey_path=pkey_path if use_pkey else None,
-                            )
-                            with SshClient(ssh_cfg) as ssh:
-                                remote = RemoteLinuxRunner(ssh)
-                                ok2, err = remote.ensure_installed_from_url(version=version, url=url)
-                                if not ok2:
-                                    raise Exception(err or "远端安装 linux-runner 失败")
-                                code, out, err2 = remote.set_current(version)
-                                if code != 0:
-                                    raise Exception((err2 or out or "").strip() or "远端 set_current 失败")
-                                code, out, err2 = remote.cron_create(task)
-                                if code != 0:
-                                    raise Exception((err2 or out or "").strip() or "远端创建 crontab 失败")
-                            ok, error = True, None
+                            svc = self._get_remote_plan_service()
+                            if svc is None:
+                                raise Exception("远端服务未初始化，请重新连接SSH")
+                            ok, error = svc.cron_create(task)
                         else:
                             ok, error = create_task(task)
                     elif platform.system() == "Linux":
@@ -331,39 +315,12 @@ class TaskListContainer(Container):
                         MessageBox("请先在 Settings -> SSH Settings 点击“连接”，连接成功后再删除远端计划任务")
                         return
 
-                    host = str(self._get_cfg(Key.SshHost, "") or "").strip()
-                    username = str(self._get_cfg(Key.SshUsername, "") or "").strip()
-                    password = str(self._get_cfg(Key.SshPassword, "") or "")
-                    use_pkey = bool(self._get_cfg(Key.SshUsePrivateKey, False))
-                    pkey_path = str(self._get_cfg(Key.SshPrivateKeyPath, "") or "").strip()
-                    version = Utils.get_app_version_from_config_json(default="")
-                    if not host or not username or not version:
-                        raise Exception("SSH配置不完整或无法获取版本号")
-                    url = WebPath.LinuxRunnerDownloadUrlTemplate.format(version=version)
-                    ssh_cfg = SshConfig(
-                        host=host,
-                        username=username,
-                        password=None if use_pkey else password,
-                        pkey_path=pkey_path if use_pkey else None,
-                    )
-                    with SshClient(ssh_cfg) as ssh:
-                        remote = RemoteLinuxRunner(ssh)
-                        ok2, err = remote.ensure_installed_from_url(version=version, url=url)
-                        if not ok2:
-                            raise Exception(err or "远端安装 linux-runner 失败")
-                        code, out, err2 = remote.set_current(version)
-                        if code != 0:
-                            raise Exception((err2 or out or "").strip() or "远端 set_current 失败")
+                    svc = self._get_remote_plan_service()
+                    if svc is None:
+                        raise Exception("远端服务未初始化，请重新连接SSH")
 
-                        if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
-                            for task_name in plan_name:
-                                code, out, err2 = remote.cron_delete(plan_name.get(task_name))
-                                if code != 0:
-                                    raise Exception((err2 or out or "").strip() or "远端删除 crontab 失败")
-                        else:
-                            code, out, err2 = remote.cron_delete(plan_name)
-                            if code != 0:
-                                raise Exception((err2 or out or "").strip() or "远端删除 crontab 失败")
+                    names = svc.task_names_from_plan(delete_task)
+                    ok, error = svc.cron_delete(names)
                 else:
                     if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
                         for task_name in plan_name:
