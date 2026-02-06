@@ -42,6 +42,9 @@ class Log:
 def write(level: str, message: str):
     global _global_log_file
 
+    if _global_log_file is None:
+        return
+
     stack_info = "FUNCTION"
     stack = inspect.stack()
     if len(stack) >= 3:
@@ -50,8 +53,6 @@ def write(level: str, message: str):
 
     log_line = f"{align_str(f'{level}',7)}  {datetime.now()}    {align_str(f'{stack_info}',25)}    {message}\n"
     print(log_line)
-    if _global_log_file is None:
-        return
     _global_log_file.write(log_line)
     _global_log_file.flush()
 

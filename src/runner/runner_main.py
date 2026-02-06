@@ -77,7 +77,6 @@ def main(argv: list[str] | None = None) -> int:
             parser.print_help()
             return 1
 
-    Log.open()
     try:
         if args.command == "run":
             ok, error = run_task_by_id(task_id=args.task_id, headless=args.headless)

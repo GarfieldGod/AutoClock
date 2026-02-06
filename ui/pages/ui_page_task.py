@@ -250,13 +250,8 @@ class TaskListContainer(Container):
                 task_to_json, task_list_to_create = UiFunc.parse_ui_value_to_task(value)
                 for task in task_list_to_create:
                     if platform.system() == "Windows":
-                        ssh_enabled = bool(self._get_cfg(Key.SshEnabled, False))
-                        if ssh_enabled:
-                            w = self.window()
-                            if not (hasattr(w, "is_remote_connected") and w.is_remote_connected()):
-                                MessageBox("请先在 Settings -> SSH Settings 点击“连接”，连接成功后再创建远端计划任务")
-                                return
-
+                        w = self.window()
+                        if hasattr(w, "is_remote_connected") and w.is_remote_connected():
                             svc = self._get_remote_plan_service()
                             if svc is None:
                                 raise Exception("远端服务未初始化，请重新连接SSH")
@@ -308,13 +303,8 @@ class TaskListContainer(Container):
                 return
 
             if platform.system() == "Windows":
-                ssh_enabled = bool(self._get_cfg(Key.SshEnabled, False))
-                if ssh_enabled:
-                    w = self.window()
-                    if not (hasattr(w, "is_remote_connected") and w.is_remote_connected()):
-                        MessageBox("请先在 Settings -> SSH Settings 点击“连接”，连接成功后再删除远端计划任务")
-                        return
-
+                w = self.window()
+                if hasattr(w, "is_remote_connected") and w.is_remote_connected():
                     svc = self._get_remote_plan_service()
                     if svc is None:
                         raise Exception("远端服务未初始化，请重新连接SSH")

@@ -55,7 +55,6 @@ def run_task_by_id(task_id: str, headless: bool = False):
 
     try:
         task = Utils.find_task(task_id)
-        Log.info(f"Runner Get Task Id: {task_id}")
         if not task:
             raise Exception(f"Task ID: {task_id} not found.")
 
@@ -70,26 +69,21 @@ def run_task_by_id(task_id: str, headless: bool = False):
                 start_day = int(task.get(Key.Day))
                 start_date = date(start_year, start_month, start_day)
             except Exception as e:
-                Log.error(f"SmartHoliday task missing or invalid start date, skip execution. Error: {e}")
                 return False, "SmartHoliday task missing or invalid start date"
 
             today = date.today()
 
             if today.year != start_year:
-                Log.info(
-                    f"SmartHoliday task year mismatch (task: {start_year}, today: {today.year}), skip execution."
-                )
                 return True, None
 
             if today < start_date or today > date(start_year, 12, 31):
-                Log.info(
-                    f"SmartHoliday: today {today} is out of valid range [{start_date}, {start_year}-12-31], skip execution."
-                )
                 return True, None
 
             if not calendar.is_workday(today):
-                Log.info(f"SmartHoliday: today {today} is not a Chinese workday, skip execution.")
                 return True, None
+
+        Log.open()
+        Log.info(f"Runner Get Task Id: {task_id}")
 
         if day_time_type and day_time_type == Key.Random:
             time_offset = task.get(Key.TimeOffset, 0)
