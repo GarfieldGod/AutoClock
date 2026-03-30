@@ -1,11 +1,16 @@
 import os
+import webbrowser
 
 from PyQt5.QtCore import QSize, QTimer
+from PyQt5.QtWidgets import QDialog
 
-from src.utils.const import AppPath
+from src.ui.ui_message import MessageBox
+from src.utils.const import AppPath, WebPath
+from src.utils.log import Log
 from src.utils.utils import Utils
 from ui.template.ui_main_window import MainWindow
 from ui.template.ui_page import Container, PageContent
+from src.utils.update import VersionCheckThread
 
 
 class AutoClockWindow(MainWindow):
@@ -26,6 +31,8 @@ class AutoClockWindow(MainWindow):
         self.write_timer = QTimer(self)
         self.write_timer.setInterval(1000)
         self.write_timer.timeout.connect(self.write_data_json)
+
+        self.check_app_update()
 
     def load_data_json(self):
         try:
@@ -62,6 +69,26 @@ class AutoClockWindow(MainWindow):
 
         if self.save_data is not None and isinstance(page, AutoClockPageContent):
             page.set_save_data(self.set_save_data, self.get_save_data)
+
+    def check_app_update(self):
+        self.thread = VersionCheckThread()
+        self.thread.check_finished.connect(self.on_check_done)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.thread.start()
+
+    def on_check_done(self, ok, ver):
+        if ok and ver and ver.get('local') and ver.get('remote'):
+            is_update = MessageBox(
+                f"There is a new version for the app:\t\n\n"
+                f"Local: {ver.get('local')} Newest: {ver.get('remote')}\t\n\n"
+                f"Do you want to download new ?\t\n\n",
+                need_check=True, message_only=False)
+            if is_update.exec_() == QDialog.Accepted:
+                webbrowser.open_new(WebPath.AppProjectReleasePath)
+        elif not ver:
+            Log.info("版本检测失败，无法获取版本信息")
+        else:
+            Log.info("当前版本是最新版本")
 
 class AutoClockPageContent(PageContent):
     set_data_func = None
