@@ -13,9 +13,12 @@ main_script = os.path.join(project_root, "entry.py")
 # 依赖的额外文件
 extra_files = []
 config_dir = os.path.join(project_root, "config.json")
+resource_path = os.path.join(project_root, "ui", "resource")
 
 if os.path.exists(config_dir):
     extra_files.append((str(config_dir), "."))
+if os.path.exists(resource_path):
+    extra_files.append((str(resource_path), os.path.join(".", "ui", "resource")))
 
 a = Analysis(
     [str(main_script)],

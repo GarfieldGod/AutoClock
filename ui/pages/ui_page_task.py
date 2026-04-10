@@ -121,8 +121,42 @@ class TaskListContainer(Container):
             return False
 
     def create_system_plan(self):
-        if platform.system() == 'Linux' and not self.check_linux_credentials():
-            return
+        if platform.system() == 'Linux':
+            # 如果当前Linux账号配置已有效，则不再弹出提示，直接创建计划
+            try:
+                login_dlg = LinuxLoginDialog(self)
+                is_valid, _ = login_dlg.get_credentials_status()
+            except Exception as e:
+                Log.error(str(e))
+                is_valid = False
+
+            if not is_valid:
+                try:
+                    config = Utils.read_dict_from_json(AppPath.DataJson) or {}
+                except Exception as e:
+                    Log.error(str(e))
+                    config = {}
+
+                need_check = config.get(Key.CheckLinuxCredentialsOnPlanCreate, True)
+
+                if need_check:
+                    choice = MessageBox(
+                        "建议先配置并验证Linux账号与自动登录，以确保计划任务执行后能够自动登录系统。\n\n"
+                        "请选择下一步操作：",
+                        "Linux账号配置提示",
+                        buttons=["去配置并验证", "直接创建", "不再提示"],
+                    )
+
+                    if choice == "去配置并验证":
+                        if not self.check_linux_credentials():
+                            return
+                    elif choice == "不再提示":
+                        config[Key.CheckLinuxCredentialsOnPlanCreate] = False
+                        try:
+                            Utils.write_dict_to_file(AppPath.DataJson, config)
+                        except Exception as e:
+                            Log.error(str(e))
+                    # "直接创建" 以及 "不再提示" 最终都继续创建计划
 
         task = self.do_create_plan()
 
@@ -138,7 +172,12 @@ class TaskListContainer(Container):
                 value = plan_ui.values()
                 task_to_json, task_list_to_create = UiFunc.parse_ui_value_to_task(value)
                 for task in task_list_to_create:
-                    ok, error = create_task(task)
+                    if platform.system() == "Windows":
+                        ok, error = create_task(task)
+                    elif platform.system() == "Linux":
+                        ok, error = create_crontab_task(task)
+                    else:
+                        raise Exception("System not supported")
                     if error:
                         raise Exception(error)
 
@@ -170,23 +209,32 @@ class TaskListContainer(Container):
             if delete_task is None:
                 raise Exception(f"Delete plan failed, no plan id: {plan_id}")
             short_name = delete_task[Key.TaskName]
-            plan_name = delete_task[Key.WindowsPlanName]
+            plan_name = delete_task[Key.SystemPlanName]
 
             dlg = MessageBox(f"\nAre you really want to delete this Plan:\n\n{short_name}\n", need_check=True, message_only=False, message_name="Delete Plan")
             if dlg.exec_() != QDialog.Accepted:
                 return
 
             if platform.system() == "Windows":
-                if delete_task[Key.TriggerType] == Key.Multiple:
+                if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
                     for task_name in plan_name:
                         ok, error = delete_scheduled_task(plan_name.get(task_name))
-                        if not ok: raise Exception(error)
+                        if not ok:
+                            raise Exception(error)
                 else:
                     ok, error = delete_scheduled_task(plan_name)
-                    if not ok: raise Exception(error)
+                    if not ok:
+                        raise Exception(error)
             elif platform.system() == "Linux":
-                ok, error = delete_crontab_task(plan_name)
-                if not ok: raise Exception(error)
+                if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
+                    for task_name in plan_name:
+                        ok, error = delete_crontab_task(plan_name.get(task_name))
+                        if not ok:
+                            raise Exception(error)
+                else:
+                    ok, error = delete_crontab_task(plan_name)
+                    if not ok:
+                        raise Exception(error)
             else:
                 raise Exception("System not supported")
 

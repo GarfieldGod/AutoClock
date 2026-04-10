@@ -13,7 +13,10 @@ class Key:
     TriggerType: str = "trigger_type"
     DayTimeType: str = "day_time_type"
     Operation: str = "operation"
-    WindowsPlanName: str = "windows_plan_name"
+    # 用户输入的计划名称（用于展示/生成系统计划任务名的前缀）
+    PlanName: str = "plan_name"
+    # 系统侧真实的计划任务名称（Windows TaskScheduler / Linux crontab 标识）
+    SystemPlanName: str = "system_plan_name"
     ExecuteTime: str = "execute_time"
     ExecuteDay: str = "execute_day"
     ExecuteDays: str = "execute_days"
@@ -33,6 +36,7 @@ class Key:
     Daily: str = "Daily"
     Weekly: str = "Weekly"
     Monthly: str = "Monthly"
+    SmartHoliday: str = "SmartHoliday"
 
     Random: str = "Random"
     Specify: str = "Specify"
@@ -60,6 +64,8 @@ class Key:
     DefaultLinuxPlanName: str = "AutoClock_Linux_Plan"
     Unknown: str = "Unknown"
     Empty: str = ""
+    LinuxUserName: str = "LinuxUserName"
+    CheckLinuxCredentialsOnPlanCreate: str = "check_linux_credentials_on_plan_create"
 
 @dataclass
 class AppPath:
