@@ -94,5 +94,6 @@ class WebPath:
     AppConfigPathGitee: str = "https://gitee.com/garfieldgod/auto-clock/raw/master/config.json"
     AppConfigPathGitHub: str = "https://github.com/garfieldgod/auto-clock/raw/master/config.json"
     AppProjectPath: str = "https://github.com/GarfieldGod/auto-clock"
+    AppProjectReleasePath: str = "https://github.com/GarfieldGod/AutoClock/releases"
     NeusoftKQPath: str = "https://kq.neusoft.com/"
     NeusoftKQLoginPath: str = "https://kq.neusoft.com/login"
