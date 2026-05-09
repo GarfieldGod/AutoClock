@@ -1,5 +1,8 @@
 name: Build and Release
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   # 手动触发
   workflow_dispatch:
@@ -84,7 +87,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t build-linux -f Dockerfile.build .
+          docker build --build-arg APT_MIRROR= -t build-linux -f Dockerfile.build .
 
       - name: Run Docker build to create binaries
         run: |

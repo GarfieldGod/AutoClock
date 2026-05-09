@@ -3,18 +3,22 @@
 
 FROM python:3.10-slim-bullseye
 
+ARG APT_MIRROR=
+
 # 设置非交互式安装
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 ENV PIP_TRUSTED_HOST=mirrors.aliyun.com
 
-# 更换为阿里云镜像源以加速下载
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+# 可选更换APT镜像源（例如 mirrors.aliyun.com）
+RUN if [ -n "${APT_MIRROR}" ]; then \
+      sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list && \
+      sed -i "s/security.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list; \
+    fi
 
 # 安装系统依赖
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     file \
     curl \
     wget \
@@ -31,7 +35,6 @@ RUN apt-get update && apt-get install -y \
     libicu-dev \
     libsqlite3-dev \
     libxss1 \
-    libgconf-2-4 \
     libxtst6 \
     libasound2-dev \
     libpulse-dev \
@@ -64,4 +67,4 @@ ENV HOST_UID=1000
 ENV HOST_GID=1000
 
 # 构建脚本，并修复生成文件的权限/归属
-CMD bash linux_build.sh && chown -R ${HOST_UID}:${HOST_GID} /build/dist || true && chmod -R 775 /build/dist
+CMD ["sh", "-c", "bash linux_build.sh && chown -R ${HOST_UID}:${HOST_GID} /build/dist || true && chmod -R 775 /build/dist"]

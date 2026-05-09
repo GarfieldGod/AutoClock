@@ -2,6 +2,26 @@
 
 # Docker打包脚本 - 在Ubuntu 20.04容器中打包，确保兼容性
 
+APT_MIRROR=""
+
+for arg in "$@"; do
+    case "$arg" in
+        --aliyun)
+            APT_MIRROR="mirrors.aliyun.com"
+            ;;
+        -h|--help)
+            echo "用法: $0 [--aliyun]"
+            echo "  --aliyun   使用阿里云APT镜像源构建Docker镜像"
+            exit 0
+            ;;
+        *)
+            echo "错误: 未知参数 $arg"
+            echo "可用参数: --aliyun"
+            exit 1
+            ;;
+    esac
+done
+
 echo "================================"
 echo "Docker环境打包 Auto-Clock"
 echo "================================"
@@ -16,7 +36,13 @@ fi
 
 # 构建Docker镜像
 echo "步骤1: 构建Docker镜像..."
-docker build -f Dockerfile.build -t auto-clock-builder .
+if [ -n "${APT_MIRROR}" ]; then
+    echo "使用APT镜像源: ${APT_MIRROR}"
+    docker build --build-arg APT_MIRROR=${APT_MIRROR} -f Dockerfile.build -t auto-clock-builder .
+else
+    echo "使用默认APT官方源"
+    docker build --build-arg APT_MIRROR= -f Dockerfile.build -t auto-clock-builder .
+fi
 
 if [ $? -ne 0 ]; then
     echo "Docker镜像构建失败"
