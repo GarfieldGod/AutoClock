@@ -44,7 +44,7 @@ class UiFunc:
         return execute_day
 
     @staticmethod
-    def parse_ui_value_to_task(value):
+    def parse_ui_value_to_task(value, task_id_override: str | None = None):
         create_list = []
         Log.info(f"parse system plan value: {value}")
         plan_name = value.get(Key.PlanName)
@@ -53,7 +53,8 @@ class UiFunc:
         if not value or not trigger_type or not operation:
             return None
 
-        task_id = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
+        task_id = task_id_override or datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
+
         is_no_name = plan_name is None or plan_name == Key.Empty or plan_name == Key.DefaultSystemPlanName
         task = {
             Key.TaskName: Key.DefaultSystemPlanName if is_no_name else plan_name,

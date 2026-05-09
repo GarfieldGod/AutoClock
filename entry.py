@@ -5,12 +5,14 @@ import random
 import argparse
 import subprocess
 from datetime import datetime, date
+from pathlib import Path
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QCoreApplication
 
 from src.utils.log import Log
 from src.utils.utils import Utils
+from src.utils.runner_installer import RunnerInstaller
 from src.ui.ui import ConfigWindow
 from src.utils.const import Key, AppPath
 from ui.init_ui import init_ui
@@ -79,12 +81,24 @@ Auto-Clock - 自动打卡工具
     
     args = parser.parse_args()
 
+    def ensure_local_runner_ready() -> bool:
+        if not getattr(sys, 'frozen', False):
+            return True
+        version = Utils.get_app_version_from_config_json(default="")
+        ok, _, error = RunnerInstaller.ensure_local_runner(Path(sys.executable).absolute().parent, version)
+        if not ok:
+            Log.error(f"Runner检查/下载失败: {error}")
+            return False
+        return True
+
     clean_invalid_windows_plan()
 
     # 修复GUI启动逻辑：只有当没有任何参数时才启动GUI
     use_gui = not any(vars(args).values())
     if use_gui:
         try:
+            if not ensure_local_runner_ready():
+                sys.exit(1)
             use_old_gui = False
             if use_old_gui:
                 app = QApplication(sys.argv)
@@ -119,6 +133,9 @@ Auto-Clock - 自动打卡工具
 
         if not args.task_id:
             Log.error("任务模式需要提供task_id参数")
+            sys.exit(1)
+
+        if not ensure_local_runner_ready():
             sys.exit(1)
 
         runner_cmd = Utils.get_runner_execute_file()

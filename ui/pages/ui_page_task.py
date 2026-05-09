@@ -14,6 +14,7 @@ from ui.custom.custom_style import get_group_css
 from ui.custom.custom_widget import TaskListWidget
 from ui.template.ui_page import PageContent, Container
 from src.ui.ui_system_plan import SystemPlanDialog
+from src.ui.ui_system_plan_edit import EditSystemPlanDialog
 from src.utils.const import WebPath
 
 # 根据操作系统导入相应的模块
@@ -148,9 +149,73 @@ class TaskListContainer(Container):
 
         self.button_create.clicked.connect(self.create_system_plan)
         self.button_delete.clicked.connect(self.delete_system_plan)
+        self.system_plan_list.itemDoubleClicked.connect(self.edit_system_plan)
 
         layout_container = QVBoxLayout(self)
         layout_container.addWidget(group_system)
+
+    def _create_plan_tasks(self, task_list_to_create):
+        for task in task_list_to_create:
+            if platform.system() == "Windows":
+                w = self.window()
+                if hasattr(w, "is_remote_connected") and w.is_remote_connected():
+                    svc = self._get_remote_plan_service()
+                    if svc is None:
+                        return False, "远端服务未初始化，请重新连接SSH"
+                    ok, error = svc.cron_create(task)
+                else:
+                    ok, error = create_task(task)
+            elif platform.system() == "Linux":
+                ok, error = create_crontab_task(task)
+            else:
+                return False, "System not supported"
+
+            if error or not ok:
+                return False, error or "Create plan failed"
+        return True, None
+
+    def _delete_plan_task(self, task):
+        plan_name = task[Key.SystemPlanName]
+
+        if platform.system() == "Windows":
+            w = self.window()
+            if hasattr(w, "is_remote_connected") and w.is_remote_connected():
+                svc = self._get_remote_plan_service()
+                if svc is None:
+                    return False, "远端服务未初始化，请重新连接SSH"
+
+                names = svc.task_names_from_plan(task)
+                ok, error = svc.cron_delete(names)
+            else:
+                if task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
+                    for task_name in plan_name:
+                        ok, error = delete_scheduled_task(plan_name.get(task_name))
+                        if not ok:
+                            return False, error or "Delete plan failed"
+                else:
+                    ok, error = delete_scheduled_task(plan_name)
+                    if not ok:
+                        return False, error or "Delete plan failed"
+        elif platform.system() == "Linux":
+            if task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
+                for task_name in plan_name:
+                    ok, error = delete_crontab_task(plan_name.get(task_name))
+                    if not ok:
+                        return False, error or "Delete plan failed"
+            else:
+                ok, error = delete_crontab_task(plan_name)
+                if not ok:
+                    return False, error or "Delete plan failed"
+        else:
+            return False, "System not supported"
+
+        return True, None
+
+    def _find_task_by_plan_id(self, plan_id):
+        for index, task in enumerate(self.task_list):
+            if task[Key.TaskID] == plan_id:
+                return index, task
+        return -1, None
 
     def check_linux_credentials(self):
         try:
@@ -248,22 +313,9 @@ class TaskListContainer(Container):
             if plan_ui.exec_() == QDialog.Accepted:
                 value = plan_ui.values()
                 task_to_json, task_list_to_create = UiFunc.parse_ui_value_to_task(value)
-                for task in task_list_to_create:
-                    if platform.system() == "Windows":
-                        w = self.window()
-                        if hasattr(w, "is_remote_connected") and w.is_remote_connected():
-                            svc = self._get_remote_plan_service()
-                            if svc is None:
-                                raise Exception("远端服务未初始化，请重新连接SSH")
-                            ok, error = svc.cron_create(task)
-                        else:
-                            ok, error = create_task(task)
-                    elif platform.system() == "Linux":
-                        ok, error = create_crontab_task(task)
-                    else:
-                        raise Exception("System not supported")
-                    if error:
-                        raise Exception(error)
+                ok, error = self._create_plan_tasks(task_list_to_create)
+                if not ok:
+                    raise Exception(error or "Create task failed")
 
                 MessageBox(f"Create Task: {task_to_json[Key.TaskName]} Success!")
                 Log.info(f"create system plan task: {task_to_json}")
@@ -273,6 +325,45 @@ class TaskListContainer(Container):
             Log.error(str(e))
             MessageBox(str(e))
             return None
+
+    def edit_system_plan(self, current_item):
+        try:
+            if current_item is None:
+                return
+            selected_widget = self.system_plan_list.itemWidget(current_item)
+            if not selected_widget:
+                return
+
+            plan_id = selected_widget.objectName()
+            task_index, old_task = self._find_task_by_plan_id(plan_id)
+            if old_task is None:
+                raise Exception(f"Edit plan failed, no plan id: {plan_id}")
+
+            edit_dlg = EditSystemPlanDialog(old_task, self)
+            if edit_dlg.exec_() != QDialog.Accepted:
+                return
+
+            value = edit_dlg.values()
+            parsed = UiFunc.parse_ui_value_to_task(value, task_id_override=old_task.get(Key.TaskID))
+            if not parsed:
+                raise Exception("Edit plan failed, invalid plan data")
+
+            task_to_json, task_list_to_create = parsed
+            ok, error = self._delete_plan_task(old_task)
+            if not ok:
+                raise Exception(error or "Delete old task failed")
+
+            ok, error = self._create_plan_tasks(task_list_to_create)
+            if not ok:
+                raise Exception(error or "Create new task failed")
+
+            self.task_list[task_index] = task_to_json
+            self._write_tasks(self.task_list)
+            self.update_plan_list()
+            MessageBox(f"Edit Task: {task_to_json[Key.TaskName]} Success!")
+        except Exception as e:
+            Log.error(str(e))
+            MessageBox(str(e))
 
     def delete_system_plan(self):
         try:
@@ -288,51 +379,18 @@ class TaskListContainer(Container):
             plan_id = selected_widget.objectName()
             Log.info(f"删除Plan: {plan_id}")
 
-            delete_task = None
-            for task in self.task_list:
-                if task[Key.TaskID] == plan_id:
-                    delete_task = task
-                    break
+            _, delete_task = self._find_task_by_plan_id(plan_id)
             if delete_task is None:
                 raise Exception(f"Delete plan failed, no plan id: {plan_id}")
             short_name = delete_task[Key.TaskName]
-            plan_name = delete_task[Key.SystemPlanName]
 
             dlg = MessageBox(f"\nAre you really want to delete this Plan:\n\n{short_name}\n", need_check=True, message_only=False, message_name="Delete Plan")
             if dlg.exec_() != QDialog.Accepted:
                 return
 
-            if platform.system() == "Windows":
-                w = self.window()
-                if hasattr(w, "is_remote_connected") and w.is_remote_connected():
-                    svc = self._get_remote_plan_service()
-                    if svc is None:
-                        raise Exception("远端服务未初始化，请重新连接SSH")
-
-                    names = svc.task_names_from_plan(delete_task)
-                    ok, error = svc.cron_delete(names)
-                else:
-                    if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
-                        for task_name in plan_name:
-                            ok, error = delete_scheduled_task(plan_name.get(task_name))
-                            if not ok:
-                                raise Exception(error)
-                    else:
-                        ok, error = delete_scheduled_task(plan_name)
-                        if not ok:
-                            raise Exception(error)
-            elif platform.system() == "Linux":
-                if delete_task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
-                    for task_name in plan_name:
-                        ok, error = delete_crontab_task(plan_name.get(task_name))
-                        if not ok:
-                            raise Exception(error)
-                else:
-                    ok, error = delete_crontab_task(plan_name)
-                    if not ok:
-                        raise Exception(error)
-            else:
-                raise Exception("System not supported")
+            ok, error = self._delete_plan_task(delete_task)
+            if not ok:
+                raise Exception(error or "Delete plan failed")
 
             self.task_list.remove(delete_task)
             self._write_tasks(self.task_list)
