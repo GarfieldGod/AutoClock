@@ -155,7 +155,8 @@ def is_task_invalid(task_name: str):
     try:
         result = subprocess.run(
             ["schtasks", "/query", "/tn", task_name],
-            shell=True, encoding="gbk", capture_output=True
+            shell=True, encoding="gbk", capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         # 如果返回码不为0或者输出中包含特定的错误信息，表示任务不存在或失效
         if result.returncode != 0 or "找不到指定的任务" in result.stderr or "not found" in result.stderr:
@@ -177,7 +178,8 @@ def delete_scheduled_task(task_name: str):
         Log.info(f"Delete plan: {task_name}")
         result = subprocess.run(
             ["schtasks", "/delete", "/tn", task_name, "/f"],
-            shell=True, encoding="gbk", capture_output=True
+            shell=True, encoding="gbk", capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         if "成功" in result.stdout or result.returncode == 0:
             Log.info(f"已删除计划任务：{task_name}")

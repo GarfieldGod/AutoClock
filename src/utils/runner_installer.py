@@ -32,6 +32,7 @@ class RunnerInstaller:
                 capture_output=True,
                 text=True,
                 timeout=15,
+                creationflags=subprocess.CREATE_NO_WINDOW,
             )
             if completed.returncode != 0:
                 return ""
