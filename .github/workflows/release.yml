@@ -26,6 +26,8 @@ jobs:
       app_name: ${{ steps.get_info.outputs.app_name }}
       version: ${{ steps.get_info.outputs.version }}
       full_name: ${{ steps.get_info.outputs.full_name }}
+      release_tag: ${{ steps.get_info.outputs.release_tag }}
+
     steps:
       - name: Check out code
         uses: actions/checkout@v5
@@ -36,9 +38,15 @@ jobs:
           APP_NAME=$(jq -r '.[0].app' config.json)
           VERSION=$(jq -r '.[0].version' config.json)
           FULL_NAME="${APP_NAME}-${VERSION}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          else
+            RELEASE_TAG="v${VERSION}"
+          fi
           echo "app_name=${APP_NAME}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "full_name=${FULL_NAME}" >> $GITHUB_OUTPUT
+          echo "release_tag=${RELEASE_TAG}" >> $GITHUB_OUTPUT
           echo "App: ${APP_NAME}, Version: ${VERSION}"
 
   build-windows:
@@ -65,16 +73,30 @@ jobs:
         run: |
           pyinstaller pack.spec
 
-      - name: Rename Windows output
+      - name: Package Windows main asset
+        shell: pwsh
         run: |
-          cd dist
-          ren auto_clock "${{ needs.get-version.outputs.full_name }}-windows"
+          New-Item -ItemType Directory -Force -Path release_assets | Out-Null
+          Compress-Archive -Path dist/auto_clock/* -DestinationPath "release_assets/auto-clock-${{ needs.get-version.outputs.version }}-windows.zip" -Force
+
+      - name: Build Windows runner-only package
+        shell: pwsh
+        run: |
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+          if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+          pyinstaller --clean --noconfirm pack_runner.spec
+          if (!(Test-Path dist/auto-clock-runner.exe)) {
+            throw "runner executable not found: dist/auto-clock-runner.exe"
+          }
+          New-Item -ItemType Directory -Force -Path runner_stage | Out-Null
+          Copy-Item dist/auto-clock-runner.exe runner_stage/auto-clock-runner.exe -Force
+          Compress-Archive -Path runner_stage/auto-clock-runner.exe -DestinationPath "release_assets/auto-clock-runner-${{ needs.get-version.outputs.version }}-windows.zip" -Force
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v5
         with:
-          name: ${{ needs.get-version.outputs.full_name }}-windows
-          path: dist/
+          name: windows-release-assets
+          path: release_assets/*
 
   build-linux:
     name: Build on Linux with Docker
@@ -98,16 +120,30 @@ jobs:
             build-linux \
             bash linux_build.sh
 
-      - name: Rename Linux output
+      - name: Package Linux main asset
         run: |
-          cd dist
-          mv auto_clock "${{ needs.get-version.outputs.full_name }}-linux"
+          set -e
+          mkdir -p release_assets
+          tar -czf "release_assets/auto-clock-${{ needs.get-version.outputs.version }}-linux.tar.gz" -C dist auto_clock
+
+      - name: Build Linux runner-only package
+        run: |
+          set -e
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            --user $(id -u):$(id -g) \
+            build-linux \
+            bash -lc "rm -rf build dist && pyinstaller --clean --noconfirm pack_runner_linux.spec"
+          test -f dist/auto-clock-runner
+          chmod +x dist/auto-clock-runner || true
+          tar -czf "release_assets/auto-clock-runner-${{ needs.get-version.outputs.version }}-linux.tar.gz" -C dist auto-clock-runner
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v5
         with:
-          name: ${{ needs.get-version.outputs.full_name }}-linux
-          path: dist/
+          name: linux-release-assets
+          path: release_assets/*
 
   release:
     name: Create Release
@@ -133,43 +169,24 @@ jobs:
           echo "Artifacts structure:"
           find packaged -type f -name "*" | sort
 
-      - name: Build linux-runner tar.gz asset
-        run: |
-          set -e
-          VERSION="${{ needs.get-version.outputs.version }}"
-          ASSET_NAME="linux-runner-${VERSION}.tar.gz"
-          WORKDIR="runner_asset"
-          rm -rf "${WORKDIR}"
-          mkdir -p "${WORKDIR}"
-          # Find linux artifact folder (uploaded from build-linux job)
-          LINUX_DIR=$(find packaged -maxdepth 2 -type d -name "${{ needs.get-version.outputs.full_name }}-linux" | head -n 1)
-          if [ -z "${LINUX_DIR}" ]; then
-            echo "linux artifact dir not found" 1>&2
-            exit 1
-          fi
-          # Expect runner executable inside the linux artifact directory
-          RUNNER_PATH=$(find "${LINUX_DIR}" -type f -name "auto-clock-runner" | head -n 1)
-          if [ -z "${RUNNER_PATH}" ]; then
-            echo "auto-clock-runner not found in linux artifact" 1>&2
-            exit 1
-          fi
-          cp "${RUNNER_PATH}" "${WORKDIR}/auto-clock-runner"
-          # Bundle the same config.json version file for --version output
-          cp config.json "${WORKDIR}/config.json"
-          tar -czf "${ASSET_NAME}" -C "${WORKDIR}" auto-clock-runner config.json
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.get-version.outputs.release_tag }}
           name: Release ${{ needs.get-version.outputs.full_name }}
           draft: ${{ inputs.draft || false }}
           body: |
             Automated release for ${{ needs.get-version.outputs.app_name }} version ${{ needs.get-version.outputs.version }}
-            
-            **Build triggered by tag:** ${{ github.ref_name }}
+
+            Assets:
+            - auto-clock-${{ needs.get-version.outputs.version }}-windows.zip
+            - auto-clock-${{ needs.get-version.outputs.version }}-linux.tar.gz
+            - auto-clock-runner-${{ needs.get-version.outputs.version }}-windows.zip
+            - auto-clock-runner-${{ needs.get-version.outputs.version }}-linux.tar.gz
+
+            **Build triggered by tag:** ${{ needs.get-version.outputs.release_tag }}
           files: |
-            packaged/**/*
-            linux-runner-${{ needs.get-version.outputs.version }}.tar.gz
+            packaged/windows-release-assets/*
+            packaged/linux-release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
