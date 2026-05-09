@@ -28,7 +28,7 @@ jobs:
       full_name: ${{ steps.get_info.outputs.full_name }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         
       - name: Get App Info from config.json
         id: get_info
@@ -48,10 +48,10 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python 3.10
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
@@ -68,10 +68,10 @@ jobs:
       - name: Rename Windows output
         run: |
           cd dist
-          ren auto_clock.exe "${{ needs.get-version.outputs.full_name }}-windows.exe"
+          ren auto_clock "${{ needs.get-version.outputs.full_name }}-windows"
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ needs.get-version.outputs.full_name }}-windows
           path: dist/
@@ -83,7 +83,7 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build Docker image
         run: |
@@ -104,7 +104,7 @@ jobs:
           mv auto_clock "${{ needs.get-version.outputs.full_name }}-linux"
 
       - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ needs.get-version.outputs.full_name }}-linux
           path: dist/
@@ -121,10 +121,10 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: packaged
 
