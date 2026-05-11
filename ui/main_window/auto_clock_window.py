@@ -316,6 +316,11 @@ class AutoClockWindow(MainWindow):
                             data.pop(k, None)
                         except Exception:
                             pass
+                for k in self._local_settings_keys():
+                    try:
+                        data.pop(k, None)
+                    except Exception:
+                        pass
                 self.save_data.update(data)
         except Exception as e:
             print(e)
@@ -332,6 +337,12 @@ class AutoClockWindow(MainWindow):
             Key.SshServerPlatform,
             Key.SshRemoteAppRoot,
         }
+
+    @staticmethod
+    def _local_settings_keys() -> set[str]:
+        keys = set(AutoClockWindow._ssh_keys())
+        keys.add(Key.CheckUpdateOnStartup)
+        return keys
 
     def write_data_json(self):
         print("write_data_json")
@@ -352,6 +363,8 @@ class AutoClockWindow(MainWindow):
             merged.update(file_data)
             if isinstance(self.save_data, dict):
                 merged.update(self.save_data)
+            for k in self._local_settings_keys():
+                merged.pop(k, None)
             if self.is_remote_connected():
                 for k in self._ssh_keys():
                     merged.pop(k, None)
@@ -384,7 +397,7 @@ class AutoClockWindow(MainWindow):
 
     def get_save_data(self, key, default=None):
         try:
-            if key in self._ssh_keys():
+            if key in self._local_settings_keys():
                 return self._settings.get(key, default)
             if not isinstance(self.save_data, dict):
                 return default
@@ -399,7 +412,7 @@ class AutoClockWindow(MainWindow):
 
     def set_save_data(self, key, value):
         try:
-            if key in self._ssh_keys():
+            if key in self._local_settings_keys():
                 self._settings.set(key, value)
             else:
                 self.save_data[key] = value

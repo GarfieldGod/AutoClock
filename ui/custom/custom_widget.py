@@ -136,13 +136,13 @@ class ComboBox(QComboBox):
                 self.setCurrentIndex(idx)
 
 class TaskListWidget(QWidget):
-    COL_TASK = 108
-    COL_OPERATION = 90
-    COL_TRIGGER = 64
+    COL_TASK = 104
+    COL_OPERATION = 86
+    COL_TRIGGER = 60
     COL_TIME = 44
-    COL_SCHEDULE = 60
-    COL_RESULT = 96
-    COL_STATUS = 58
+    COL_SCHEDULE = 66
+    COL_RESULT = 90
+    COL_STATUS = 74
 
     def __init__(self, task, on_status_toggle=None, parent=None):
         super(TaskListWidget, self).__init__(parent)
@@ -251,7 +251,7 @@ class TaskListWidget(QWidget):
         label_r = QtUI.create_label(
             self._elide_text(last_result, self.COL_RESULT, size=front_size),
             size=front_size,
-            alignment=label_alignment,
+            alignment=Qt.AlignCenter,
             fixed_width=self.COL_RESULT,
             width_policy=QSizePolicy.Fixed,
             height_policy=QSizePolicy.Fixed,
@@ -261,7 +261,15 @@ class TaskListWidget(QWidget):
         self._status_button = QPushButton()
         self._status_button.setCheckable(True)
         self._status_button.setChecked(status_on)
-        self._status_button.setFixedWidth(self.COL_STATUS)
+        self._status_button.setFixedWidth(52)
         self._status_button.clicked.connect(self._on_status_clicked)
         self._apply_status_button_style(status_on)
-        layout_plan_line.addWidget(self._status_button)
+
+        status_holder = QWidget()
+        status_holder.setFixedWidth(self.COL_STATUS)
+        status_holder.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        status_layout = QHBoxLayout(status_holder)
+        status_layout.setContentsMargins(18, 0, 0, 0)
+        status_layout.setSpacing(0)
+        status_layout.addWidget(self._status_button, 0, Qt.AlignCenter)
+        layout_plan_line.addWidget(status_holder)

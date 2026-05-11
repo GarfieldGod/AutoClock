@@ -1,7 +1,7 @@
 import platform
 from datetime import datetime
 
-from PyQt5.QtCore import QSize, QDate
+from PyQt5.QtCore import QSize, QDate, Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QListWidget, QListWidgetItem, \
     QDialog
@@ -163,9 +163,14 @@ class TaskListContainer(Container):
             label = QLabel(title)
             label.setFixedWidth(width)
             f = QFont()
-            f.setPointSize(11)
-            f.setBold(True)
+            f.setPointSize(10)
+            f.setBold(False)
             label.setFont(f)
+            label.setContentsMargins(0, 0, 0, 0)
+            if title in ("Last Result", "Status"):
+                label.setAlignment(Qt.AlignCenter)
+            else:
+                label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             header_layout.addWidget(label, 0)
         layout_system.addLayout(header_layout)
 
