@@ -4,7 +4,7 @@ from datetime import datetime
 from PyQt5.QtCore import QSize, QDate, Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QListWidget, QListWidgetItem, \
-    QDialog
+    QDialog, QWidget
 
 from src.ui.ui_message import MessageBox
 from src.utils.const import AppPath, Key
@@ -160,6 +160,39 @@ class TaskListContainer(Container):
             ("Status", TaskListWidget.COL_STATUS),
         ]
         for title, width in header_defs:
+            if title == "Last Result":
+                holder = QWidget()
+                holder.setFixedWidth(width)
+                holder_layout = QHBoxLayout(holder)
+                holder_layout.setContentsMargins(0, 0, 0, 0)
+                holder_layout.setSpacing(2)
+
+                label = QLabel(title)
+                f = QFont()
+                f.setPointSize(10)
+                f.setBold(False)
+                label.setFont(f)
+                label.setContentsMargins(0, 0, 0, 0)
+                label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+                btn_refresh = QPushButton("↻")
+                btn_refresh.setFixedSize(16, 16)
+                btn_refresh.setCursor(Qt.PointingHandCursor)
+                btn_refresh.setToolTip("Refresh last results")
+                btn_refresh.setStyleSheet(
+                    "QPushButton { border:none; color:#4b5563; font-size:12px; font-weight:600; padding:0; }"
+                    "QPushButton:hover { color:#111827; }"
+                    "QPushButton:pressed { color:#2563eb; }"
+                )
+                btn_refresh.clicked.connect(self.refresh_last_results)
+
+                holder_layout.addStretch(1)
+                holder_layout.addWidget(label)
+                holder_layout.addWidget(btn_refresh)
+                holder_layout.addStretch(1)
+                header_layout.addWidget(holder, 0)
+                continue
+
             label = QLabel(title)
             label.setFixedWidth(width)
             f = QFont()
@@ -167,7 +200,7 @@ class TaskListContainer(Container):
             f.setBold(False)
             label.setFont(f)
             label.setContentsMargins(0, 0, 0, 0)
-            if title in ("Last Result", "Status"):
+            if title == "Status":
                 label.setAlignment(Qt.AlignCenter)
             else:
                 label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -527,6 +560,14 @@ class TaskListContainer(Container):
         item.setSizeHint(QSize(0, 34))
         self.system_plan_list.addItem(item)
         self.system_plan_list.setItemWidget(item, widget_plan_line)
+
+    def refresh_last_results(self):
+        try:
+            self.update_plan_list()
+        except Exception as e:
+            message = self._error_text(e, "Refresh last results failed")
+            Log.error(message)
+            MessageBox(message)
 
 class SystemLoginContainer(Container):
     def __init__(self, x, y):

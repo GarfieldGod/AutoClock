@@ -298,13 +298,15 @@ def _connect_network_impl():
                 # 尝试重新连接到最后一个连接
                 result = subprocess.run(['nmcli', '-g', 'NAME', 'connection', 'show', '--active'], 
                                       capture_output=True, text=True)
-                active_connections = result.stdout.strip().split('\n')
+                active_stdout = (result.stdout or "")
+                active_connections = active_stdout.strip().split('\n') if active_stdout else []
                 
                 if not active_connections or not active_connections[0]:
                     # 尝试重新连接到之前使用的WiFi
                     result = subprocess.run(['nmcli', '-g', 'NAME', 'connection', 'show', '--order', 'timestamp'], 
                                           capture_output=True, text=True)
-                    connections = result.stdout.strip().split('\n')
+                    conn_stdout = (result.stdout or "")
+                    connections = conn_stdout.strip().split('\n') if conn_stdout else []
                     
                     if connections and connections[0]:
                         subprocess.run(['sudo', 'nmcli', 'connection', 'up', connections[0]], 

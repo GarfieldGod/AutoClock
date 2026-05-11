@@ -236,8 +236,10 @@ class TaskListWidget(QWidget):
             width_policy=QSizePolicy.Fixed,
             height_policy=QSizePolicy.Fixed,
         )
+        label_t.setToolTip(str(task.get(Key.TriggerType, "") or ""))
         layout_plan_line.addWidget(label_t)
         label_et = QtUI.create_label(task[Key.ExecuteTime], size=front_size, alignment=Qt.AlignCenter, fixed_width=self.COL_TIME, width_policy=QSizePolicy.Fixed, height_policy=QSizePolicy.Fixed)
+        label_et.setToolTip(str(task.get(Key.ExecuteTime, "") or ""))
         layout_plan_line.addWidget(label_et)
         label_s = QtUI.create_label(
             self._elide_text(schedule_text, self.COL_SCHEDULE, size=front_size),
@@ -247,6 +249,7 @@ class TaskListWidget(QWidget):
             width_policy=QSizePolicy.Fixed,
             height_policy=QSizePolicy.Fixed,
         )
+        label_s.setToolTip(schedule_text)
         layout_plan_line.addWidget(label_s)
         label_r = QtUI.create_label(
             self._elide_text(last_result, self.COL_RESULT, size=front_size),
