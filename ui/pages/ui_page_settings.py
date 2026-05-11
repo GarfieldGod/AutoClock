@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QSizePolicy
 
 from src.utils.const import Key
+from src.utils.utils import Utils
 from ui.main_window.auto_clock_window import AutoClockPageContent, AutoClockContainer
 from ui.custom.custom_style import get_group_css
 from ui.custom.custom_widget import CheckBox, LineEdit, PasswordLineEdit, FileSelectLineEdit, ComboBox
@@ -23,6 +24,7 @@ class ToolSettingsPage(AutoClockPageContent):
         if platform.system() == 'Linux':
             self.input_save_widget.append(tool_config.check_linux_credentials_on_plan_create)
 
+        self.input_save_widget.append(tool_config.check_update_on_startup)
         self.input_save_widget.append(ssh_config.ssh_enabled)
         self.input_save_widget.append(ssh_config.ssh_host)
         self.input_save_widget.append(ssh_config.ssh_username)
@@ -37,6 +39,12 @@ class ToolConfigContainer(AutoClockContainer):
         super(ToolConfigContainer, self).__init__(x, y)
 
         self.check_linux_credentials_on_plan_create = CheckBox(Key.CheckLinuxCredentialsOnPlanCreate, default=True)
+        self.check_update_on_startup = ComboBox(
+            Key.CheckUpdateOnStartup,
+            items=["每次启动都检查", "永不检查"],
+            default="每次启动都检查",
+        )
+        self.btn_check_update = QPushButton("检查更新")
 
         self.init_ui_layout()
 
@@ -53,8 +61,33 @@ class ToolConfigContainer(AutoClockContainer):
             label = QLabel("当前系统无Linux相关工具设置")
             layout_tool.addWidget(label)
 
+        row_update = QHBoxLayout()
+        row_update.addWidget(QLabel("版本更新检查"))
+        row_update.addWidget(self.check_update_on_startup, stretch=1)
+        layout_tool.addLayout(row_update)
+
+        row_version = QHBoxLayout()
+        row_version.addWidget(QLabel("当前版本"))
+        row_version.addWidget(QLabel(Utils.get_app_version_from_config_json(default="unknown")), stretch=1)
+        row_version.addWidget(self.btn_check_update)
+        layout_tool.addLayout(row_version)
+
         layout_container = QVBoxLayout(self)
         layout_container.addWidget(group_tool)
+
+        self.btn_check_update.clicked.connect(self._on_check_update_clicked)
+
+    def _on_check_update_clicked(self):
+        try:
+            w = self.window()
+            if hasattr(w, "check_app_update"):
+                w.check_app_update(manual=True)
+            else:
+                from src.ui.ui_message import MessageBox
+                MessageBox("当前窗口不支持检查更新")
+        except Exception as e:
+            from src.ui.ui_message import MessageBox
+            MessageBox(f"检查更新异常：{e}")
 
 
 class SshConfigContainer(AutoClockContainer):

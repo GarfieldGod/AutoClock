@@ -68,6 +68,7 @@ class Key:
     LinuxUserName: str = "LinuxUserName"
     LinuxDisplay: str = "linux_display"
     CheckLinuxCredentialsOnPlanCreate: str = "check_linux_credentials_on_plan_create"
+    CheckUpdateOnStartup: str = "check_update_on_startup"
 
     SshEnabled: str = "ssh_enabled"
     SshHost: str = "ssh_host"

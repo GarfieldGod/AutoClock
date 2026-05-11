@@ -85,12 +85,10 @@ jobs:
           if (Test-Path build) { Remove-Item -Recurse -Force build }
           if (Test-Path dist) { Remove-Item -Recurse -Force dist }
           pyinstaller --clean --noconfirm pack_runner.spec
-          if (!(Test-Path dist/auto-clock-runner.exe)) {
-            throw "runner executable not found: dist/auto-clock-runner.exe"
+          if (!(Test-Path dist/auto-clock-runner/auto-clock-runner.exe)) {
+            throw "runner executable not found: dist/auto-clock-runner/auto-clock-runner.exe"
           }
-          New-Item -ItemType Directory -Force -Path runner_stage | Out-Null
-          Copy-Item dist/auto-clock-runner.exe runner_stage/auto-clock-runner.exe -Force
-          Compress-Archive -Path runner_stage/auto-clock-runner.exe -DestinationPath "release_assets/auto-clock-runner-${{ needs.get-version.outputs.version }}-windows.zip" -Force
+          Compress-Archive -Path dist/auto-clock-runner/* -DestinationPath "release_assets/auto-clock-runner-${{ needs.get-version.outputs.version }}-windows.zip" -Force
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v5
@@ -135,9 +133,9 @@ jobs:
             --user $(id -u):$(id -g) \
             build-linux \
             bash -lc "rm -rf build dist && pyinstaller --clean --noconfirm pack_runner_linux.spec"
-          test -f dist/auto-clock-runner
-          chmod +x dist/auto-clock-runner || true
-          tar -czf "release_assets/auto-clock-runner-${{ needs.get-version.outputs.version }}-linux.tar.gz" -C dist auto-clock-runner
+          test -f dist/auto-clock-runner/auto-clock-runner
+          chmod +x dist/auto-clock-runner/auto-clock-runner || true
+          tar -czf "release_assets/auto-clock-runner-${{ needs.get-version.outputs.version }}-linux.tar.gz" -C dist/auto-clock-runner .
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v5

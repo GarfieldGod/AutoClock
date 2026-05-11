@@ -1,7 +1,7 @@
 # auto_clock_runner.spec
 # -*- mode: python ; coding: utf-8 -*-
 import os
-from PyInstaller.building.build_main import Analysis, PYZ, EXE
+from PyInstaller.building.build_main import Analysis, PYZ, EXE, COLLECT
 
 project_root = r"."
 runner_script = os.path.join(project_root, "src", "runner", "runner_main.py")
@@ -21,7 +21,7 @@ a_runner = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['PyQt5'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=None,
@@ -33,9 +33,9 @@ pyz_runner = PYZ(a_runner.pure, a_runner.zipped_data, cipher=None)
 exe_runner = EXE(
     pyz_runner,
     a_runner.scripts,
-    a_runner.binaries,
-    a_runner.zipfiles,
-    a_runner.datas,
+    [],
+    [],
+    [],
     [],
     name="auto-clock-runner",
     debug=False,
@@ -45,10 +45,22 @@ exe_runner = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
+    exclude_binaries=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
     icon=ico,
+)
+
+coll = COLLECT(
+    exe_runner,
+    a_runner.binaries,
+    a_runner.zipfiles,
+    a_runner.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="auto-clock-runner",
 )

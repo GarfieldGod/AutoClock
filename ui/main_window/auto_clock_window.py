@@ -3,10 +3,12 @@ import re
 from pathlib import Path
 
 from PyQt5.QtCore import QSize, QTimer, QThread, pyqtSignal
+from PyQt5.QtWidgets import QDialog
 
 from src.utils.const import AppPath, Key
 from src.utils.utils import Utils
 from src.utils.log import Log
+from src.utils.update import VersionCheckThread
 from ui.template.ui_main_window import MainWindow
 from ui.template.ui_page import Container, PageContent
 from src.extend.ssh_client import SshClient, SshConfig
@@ -31,10 +33,15 @@ class AutoClockWindow(MainWindow):
         self.save_data = {}
         self._settings = SettingsStore()
         self._settings.load()
+        self._update_threads = []
+
         self._local_data_root = AppPath.DataRoot
         self._local_data_json = AppPath.DataJson
         self._local_tasks_json = AppPath.TasksJson
         self._local_runner_result_json = AppPath.RunnerResultJson
+
+        self.load_data_json()
+        self._check_update_on_startup()
 
         self._remote_connected = False
         self._remote_host = None
@@ -46,8 +53,6 @@ class AutoClockWindow(MainWindow):
 
         self._data_store: IDataStore = LocalDataStore()
 
-        self.load_data_json()
-
         self.write_timer = QTimer(self)
         self.write_timer.setInterval(1000)
         self.write_timer.timeout.connect(self.write_data_json)
@@ -58,6 +63,50 @@ class AutoClockWindow(MainWindow):
         self._ssh_status_timer.start()
 
         self.refresh_ssh_status()
+
+    def _check_update_on_startup(self):
+        try:
+            pref = self.get_save_data(Key.CheckUpdateOnStartup, "每次启动都检查")
+            if pref != "每次启动都检查":
+                return
+            self.check_app_update(manual=False)
+        except Exception:
+            pass
+
+    def check_app_update(self, manual: bool = True):
+        try:
+            thread = VersionCheckThread()
+            self._update_threads.append(thread)
+            thread.check_finished.connect(lambda ok, ver: self._on_update_check_done(ok, ver, manual))
+            thread.finished.connect(lambda t=thread: self._update_threads.remove(t) if t in self._update_threads else None)
+            thread.finished.connect(thread.deleteLater)
+            thread.start()
+        except Exception as e:
+            if manual:
+                from src.ui.ui_message import MessageBox
+                MessageBox(f"检查更新失败：{e}")
+
+    def _on_update_check_done(self, ok, ver, manual: bool = False):
+        try:
+            if ok and ver and ver.get("local") and ver.get("remote"):
+                from src.ui.ui_message import MessageBox
+                import webbrowser
+                from src.utils.const import WebPath
+                is_update = MessageBox(
+                    f"检测到新版本:\n\n"
+                    f"本地: {ver.get('local')}  最新: {ver.get('remote')}\n\n"
+                    f"是否前往下载？",
+                    need_check=True, message_only=False)
+                if is_update.exec_() == QDialog.Accepted:
+                    webbrowser.open_new(WebPath.AppProjectPath)
+            elif manual and ver and ver.get("local") and ver.get("remote"):
+                from src.ui.ui_message import MessageBox
+                MessageBox(f"当前已经是最新版本：{ver.get('local')}")
+            elif manual:
+                from src.ui.ui_message import MessageBox
+                MessageBox("版本检测失败，无法获取版本信息")
+        except Exception:
+            pass
 
     def refresh_ssh_status(self):
         enabled = _truthy(self.get_save_data(Key.SshEnabled, False))
