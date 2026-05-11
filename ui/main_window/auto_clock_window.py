@@ -182,7 +182,10 @@ class AutoClockWindow(MainWindow):
             self._remote_ssh_cfg = cfg
             self._data_store = store
 
-            self._remote_plan_service = RemotePlanService(lambda: self._remote_ssh_cfg)
+            self._remote_plan_service = RemotePlanService(
+                lambda: self._remote_ssh_cfg,
+                lambda: AppPath.RemoteAppRoot,
+            )
             self.load_data_json()
             self._reload_pages()
             self.refresh_ssh_status()

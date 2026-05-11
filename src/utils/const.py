@@ -21,6 +21,8 @@ class Key:
     ExecuteTime: str = "execute_time"
     ExecuteDay: str = "execute_day"
     ExecuteDays: str = "execute_days"
+    Enabled: str = "enabled"
+    LastRunResult: str = "last_run_result"
 
     Year: str = "year"
     Month: str = "month"
