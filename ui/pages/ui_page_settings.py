@@ -42,7 +42,8 @@ class ToolConfigContainer(AutoClockContainer):
         self.check_update_on_startup = ComboBox(
             Key.CheckUpdateOnStartup,
             items=["每次启动都检查", "永不检查"],
-            default="每次启动都检查",
+            data_values=["on_startup", "never"],
+            default="on_startup",
         )
         self.btn_check_update = QPushButton("检查更新")
 

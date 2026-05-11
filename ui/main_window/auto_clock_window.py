@@ -40,14 +40,14 @@ class AutoClockWindow(MainWindow):
         self._local_tasks_json = AppPath.TasksJson
         self._local_runner_result_json = AppPath.RunnerResultJson
 
-        self.load_data_json()
-        self._check_update_on_startup()
-
         self._remote_connected = False
         self._remote_host = None
         self._remote_home_dir = None
         self._remote_data_root_abs = None
         self._remote_ssh_cfg: SshConfig | None = None
+
+        self.load_data_json()
+        self._check_update_on_startup()
 
         self._remote_plan_service: RemotePlanService | None = None
 
@@ -66,8 +66,8 @@ class AutoClockWindow(MainWindow):
 
     def _check_update_on_startup(self):
         try:
-            pref = self.get_save_data(Key.CheckUpdateOnStartup, "每次启动都检查")
-            if pref != "每次启动都检查":
+            pref = self.get_save_data(Key.CheckUpdateOnStartup, "on_startup")
+            if pref != "on_startup":
                 return
             self.check_app_update(manual=False)
         except Exception:

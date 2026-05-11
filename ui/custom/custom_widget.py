@@ -91,11 +91,12 @@ class CheckBox(QCheckBox):
 
 
 class ComboBox(QComboBox):
-    def __init__(self, key, items: list[str], default: str = "", parent=None):
+    def __init__(self, key, items: list[str], default: str = "", data_values: list[str] | None = None, parent=None):
         super(ComboBox, self).__init__(parent)
         self.key = key
         self.default = default
         self._set_func = None
+        self._data_values = data_values if data_values is not None else list(items)
 
         for it in items:
             self.addItem(str(it))
@@ -104,20 +105,34 @@ class ComboBox(QComboBox):
 
     def _on_changed(self, _text: str):
         if self._set_func is not None:
-            self._set_func(self.key, self.currentText())
+            idx = self.currentIndex()
+            if 0 <= idx < len(self._data_values):
+                self._set_func(self.key, self._data_values[idx])
+            else:
+                self._set_func(self.key, self.currentText())
 
     def value_changed_func(self, set_func):
         self._set_func = set_func
 
     def set_value(self, value):
         text = str(value) if value is not None else ""
+        try:
+            idx = self._data_values.index(text)
+            self.setCurrentIndex(idx)
+            return
+        except ValueError:
+            pass
         idx = self.findText(text)
         if idx >= 0:
             self.setCurrentIndex(idx)
             return
-        idx = self.findText(str(self.default))
-        if idx >= 0:
+        try:
+            idx = self._data_values.index(str(self.default))
             self.setCurrentIndex(idx)
+        except ValueError:
+            idx = self.findText(str(self.default))
+            if idx >= 0:
+                self.setCurrentIndex(idx)
 
 class TaskListWidget(QWidget):
     def __init__(self, task, parent=None):

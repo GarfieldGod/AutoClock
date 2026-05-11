@@ -98,7 +98,7 @@ Auto-Clock - 自动打卡工具
     if use_gui:
         try:
             if not ensure_local_runner_ready():
-                sys.exit(1)
+                Log.error("Runner不可用，继续启动GUI；计划任务执行时可能失败，请在设置页中手动检查更新。")
             use_old_gui = False
             if use_old_gui:
                 app = QApplication(sys.argv)

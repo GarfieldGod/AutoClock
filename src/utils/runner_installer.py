@@ -31,12 +31,16 @@ class RunnerInstaller:
     @staticmethod
     def _read_runner_version(runner_path: Path) -> str:
         try:
+            kwargs = {
+                "capture_output": True,
+                "text": True,
+                "timeout": 15,
+            }
+            if os.name == "nt":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
             completed = subprocess.run(
                 [str(runner_path), "--version"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                **kwargs,
             )
             if completed.returncode != 0:
                 return ""
@@ -74,18 +78,30 @@ class RunnerInstaller:
     @staticmethod
     def _install_from_release(version: str, target_dir: Path):
         if os.name == "nt":
-            url = WebPath.LocalWindowsRunnerDownloadUrlTemplate.format(version=version)
+            urls = [WebPath.LocalWindowsRunnerDownloadUrlTemplate.format(version=version)]
             ext = ".zip"
         else:
-            url = WebPath.LocalLinuxRunnerDownloadUrlTemplate.format(version=version)
+            urls = [
+                WebPath.LocalLinuxRunnerDownloadUrlTemplate.format(version=version),
+                WebPath.LinuxRunnerDownloadUrlTemplate.format(version=version),
+            ]
             ext = ".tar.gz"
 
         target_dir.mkdir(parents=True, exist_ok=True)
 
+        last_error = None
         with tempfile.TemporaryDirectory() as td:
-            archive_path = Path(td) / f"runner{ext}"
-            RunnerInstaller._download_file(url, archive_path)
-            RunnerInstaller._extract_archive_to_dir(archive_path, target_dir)
+            for idx, url in enumerate(urls):
+                archive_path = Path(td) / f"runner_{idx}{ext}"
+                try:
+                    RunnerInstaller._download_file(url, archive_path)
+                    RunnerInstaller._extract_archive_to_dir(archive_path, target_dir)
+                    return
+                except Exception as e:
+                    last_error = e
+                    continue
+
+        raise Exception(str(last_error) if last_error else "download runner failed")
 
     @staticmethod
     def ensure_local_runner(base_dir: str | Path, version: str) -> tuple[bool, str | None, str | None]:
