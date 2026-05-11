@@ -36,6 +36,8 @@ class TitleBarArea(QWidget):
 
         self.init_title_label()
 
+        self._init_connection_status()
+
         self.button_layout.setContentsMargins(0, 0, 10, 0)
         self.button_layout.setSpacing(10)
 
@@ -57,6 +59,28 @@ class TitleBarArea(QWidget):
         title_desc.setObjectName("title_desc")
 
         self.title_layout.addWidget(title_desc, stretch=1)
+
+    def _init_connection_status(self):
+        self.status_dot = QLabel()
+        self.status_dot.setFixedSize(10, 10)
+        self.status_dot.setObjectName("status_dot")
+        self.status_label = QLabel("local")
+        self.status_label.setObjectName("status_label")
+
+        self.title_layout.addWidget(self.status_dot)
+        self.title_layout.addWidget(self.status_label)
+        self.title_layout.addSpacing(16)
+
+        self.set_connection_status(is_local=True, ok=True, host=None)
+
+    def set_connection_status(self, is_local: bool, ok: bool, host: str | None):
+        if is_local:
+            self.status_label.setText("local")
+            color = "#808080"
+        else:
+            self.status_label.setText(host or "")
+            color = "#2ecc71" if ok else "#808080"
+        self.status_dot.setStyleSheet(f"background-color:{color}; border-radius:5px;")
 
     def init_min_button(self):
         self.min_btn.setFixedSize(28, 28)

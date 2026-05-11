@@ -9,12 +9,13 @@ from PyQt5.QtWidgets import QDialogButtonBox, QVBoxLayout, QComboBox, QWidget, Q
 from src.utils.log import Log
 from src.utils.const import Key
 from src.ui.ui_calendar import Calendar, WeeklyCalendar
-from src.utils.utils import Utils, QtUI
+from src.utils.utils import Utils
+from src.utils.qt_ui import QtUI
 from src.ui.ui_message import MessageBox
 
 
 class SystemPlanDialog(QDialog):
-    trigger_types = [Key.Once, Key.Multiple, Key.Daily, Key.Weekly, Key.Monthly]
+    trigger_types = [Key.Once, Key.Multiple, Key.Daily, Key.Weekly, Key.Monthly, Key.SmartHoliday]
     day_time_types = [Key.Specify, Key.Random]
     operation_types = [Key.AutoClock, Key.ShutDownSystem, Key.SystemSleep, Key.DisconnectNetwork, Key.ConnectNetwork]
 
@@ -114,8 +115,6 @@ class SystemPlanDialog(QDialog):
             self.layout_random_day_time_selector.addWidget(self.hour_sel_end)
             self.layout_random_day_time_selector.addWidget(self.minute_sel_end)
 
-            widget_layout.addStretch()
-
             # 批量选择
             self.calendar_selector = Calendar()
 
@@ -191,17 +190,23 @@ class SystemPlanDialog(QDialog):
 
     def trigger_type_changed(self):
         self.space_area_hide_all_content(self.space_area)
-        if self.trigger_type.currentText() == self.trigger_types[1]:
+        current = self.trigger_type.currentText()
+        if current == self.trigger_types[1]:
             self.calendar_selector.show()
-        elif self.trigger_type.currentText() == self.trigger_types[0]:
+        elif current == self.trigger_types[0]:
             self.widget_one_day_selector.show()
-        elif self.trigger_type.currentText() == self.trigger_types[3]:
+        elif current == self.trigger_types[3]:
             self.widget_weekly_selector.show()
-        elif self.trigger_type.currentText() == self.trigger_types[4]:
+        elif current == self.trigger_types[4]:
             self.widget_monthly_selector.show()
+        elif current == Key.SmartHoliday:
+            # SmartHoliday does not allow manual date selection
+            pass
         else:
             self.widget_daily_selector.show()
 
+        self.layout().invalidate()
+        self.layout().activate()
         self.adjustSize()
 
     def day_time_type_changed(self):
@@ -256,7 +261,7 @@ class SystemPlanDialog(QDialog):
         minute = self.minute_sel.currentText().strip() if self.day_time_type.currentText() == Key.Specify else self.minute_sel_start.currentText().strip()
         time_offset = self.get_time_offset()
         return {
-            Key.WindowsPlanName: self.plan_name_edit.text().strip(),
+            Key.PlanName: self.plan_name_edit.text().strip(),
             Key.TriggerType: self.trigger_type.currentText().strip(),
             Key.Operation: self.operation.currentText().strip(),
             Key.DayTimeType: self.day_time_type.currentText().strip(),

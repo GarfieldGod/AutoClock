@@ -7,7 +7,7 @@ from src.utils.const import Key, AppPath, WebPath
 from src.core.auto_clock import AutoClock, Config
 
 class ClockManager:
-    def __init__(self):
+    def __init__(self, show_web_page_override=None):
         try:
             if not os.path.exists(f"{AppPath.DataJson}"):
                 self.status = False
@@ -29,6 +29,8 @@ class ClockManager:
                 self.captcha_retry_times = int(data.get(Key.CaptchaRetryTimes, 5))
                 self.captcha_tolerance_angle = int(data.get(Key.CaptchaToleranceAngle, 5))
                 self.show_web_page = data.get(Key.ShowWebPage, False)
+                if show_web_page_override is not None:
+                    self.show_web_page = bool(show_web_page_override)
 
                 self.status = True
         except Exception as e:
@@ -81,10 +83,10 @@ class ClockManager:
 
         return True
 
-def run_clock(is_test=False):
+def run_clock(is_test=False, show_web_page_override=None):
     try:
         if not is_test:
-            clock = ClockManager()
+            clock = ClockManager(show_web_page_override=show_web_page_override)
             clock.run()
             return clock.status, clock.error
         else:

@@ -69,17 +69,19 @@ def create_crontab_entry(task_name, task_id, trigger_type, day=None, time=None):
     :return: crontab条目字符串
     """
     # 获取执行文件路径
-    exe_path = Utils.get_execute_file()
-    if not exe_path:
-        raise Exception("无法获取执行文件路径")
+    runner_cmd = Utils.get_runner_execute_file()
+    if not runner_cmd:
+        raise Exception("无法获取runner执行文件路径")
 
     # 构建crontab执行命令，设置必要的环境变量
     home_dir = os.path.expanduser("~")
     path_env = os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')
     user = os.environ.get('USER', os.environ.get('LOGNAME', 'user'))
+    config_data = Utils.read_dict_from_json(AppPath.DataJson) or {}
+    display = config_data.get(Key.LinuxDisplay, ':0')
     
     # 构建完整的命令，包含环境变量设置
-    command = f'PATH={path_env} HOME={home_dir} USER={user} DISPLAY=:1 {exe_path} --task_id={task_id}'
+    command = f'PATH={path_env} HOME={home_dir} USER={user} DISPLAY={display} {runner_cmd} --task_id={task_id}'
     
     # 解析时间
     try:
@@ -98,7 +100,7 @@ def create_crontab_entry(task_name, task_id, trigger_type, day=None, time=None):
         # 添加任务信息作为注释，crontab不直接支持一次性任务
         # 我们会通过清理机制移除过期任务
         cron_expr = f"{minute} {hour} {day_of_month} {month} * {command}"
-    elif trigger_type == Key.Daily:
+    elif trigger_type == Key.Daily or trigger_type == Key.SmartHoliday:
         # 每日任务
         cron_expr = f"{minute} {hour} * * * {command}"
     elif trigger_type == Key.Weekly and day:
@@ -253,7 +255,7 @@ def delete_invalid_plan(plan_dict):
         execute_day = plan_dict.get(Key.ExecuteDay)
         execute_date = datetime.strptime(execute_day, "%Y-%m-%d").date()
         if execute_date < datetime.today().date():
-            plan_name = plan_dict.get(Key.WindowsPlanName)
+            plan_name = plan_dict.get(Key.SystemPlanName)
             Log.info(f"计划任务已过期：{plan_name}，将被删除")
             delete_scheduled_task(plan_name)
             return True
@@ -363,7 +365,7 @@ def create_crontab_task(task):
     """
     try:
         # 获取任务参数
-        task_name = task.get("LinuxPlanName")
+        task_name = task.get(Key.SystemPlanName)
         task_id = task.get(Key.TaskID)
         trigger_type = task.get(Key.TriggerType)
         execute_day = task.get(Key.ExecuteDay)
@@ -424,22 +426,22 @@ def create_task(task):
     Log.info(f"创建Linux计划任务: {task}")
     try:
         # 删除旧任务
-        delete_scheduled_task(task.get(Key.WindowsPlanName))
+        delete_scheduled_task(task.get(Key.SystemPlanName))
         
         ui_trigger_type = task.get(Key.TriggerType)
         ok = False
         
         if ui_trigger_type == Key.Once or ui_trigger_type == Key.Multiple:
             ok = create_scheduled_task(
-                task_name=task.get(Key.WindowsPlanName),
+                task_name=task.get(Key.SystemPlanName),
                 task_id=task.get(Key.TaskID),
                 trigger_type=Key.Once,
                 day=task.get(Key.ExecuteDay),
                 time=task.get(Key.ExecuteTime)
             )
-        elif ui_trigger_type == Key.Daily:
+        elif ui_trigger_type == Key.Daily or ui_trigger_type == Key.SmartHoliday:
             ok = create_scheduled_task(
-                task_name=task.get(Key.WindowsPlanName),
+                task_name=task.get(Key.SystemPlanName),
                 task_id=task.get(Key.TaskID),
                 trigger_type=Key.Daily,
                 day=None,
@@ -447,7 +449,7 @@ def create_task(task):
             )
         elif ui_trigger_type == Key.Weekly:
             ok = create_scheduled_task(
-                task_name=task.get(Key.WindowsPlanName),
+                task_name=task.get(Key.SystemPlanName),
                 task_id=task.get(Key.TaskID),
                 trigger_type=Key.Weekly,
                 day=task.get(Key.ExecuteDay),
@@ -455,7 +457,7 @@ def create_task(task):
             )
         elif ui_trigger_type == Key.Monthly:
             ok = create_scheduled_task(
-                task_name=task.get(Key.WindowsPlanName),
+                task_name=task.get(Key.SystemPlanName),
                 task_id=task.get(Key.TaskID),
                 trigger_type=Key.Monthly,
                 day=task.get(Key.ExecuteDay),
@@ -466,5 +468,5 @@ def create_task(task):
         
     except Exception as e:
         Log.error(f"创建任务错误: {str(e)}")
-        delete_scheduled_task(task.get(Key.WindowsPlanName))
+        delete_scheduled_task(task.get(Key.SystemPlanName))
         return False, e

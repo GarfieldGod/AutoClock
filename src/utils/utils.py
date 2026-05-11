@@ -10,9 +10,6 @@ from pathlib import Path
 from webdriver_manager.core.driver_cache import DriverCacheManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QLabel
-
 from src.utils.log import Log
 from src.utils.const import Key, AppPath
 
@@ -52,6 +49,20 @@ class Utils:
         except Exception as e:
             Log.info(f"Load {file_path} failed. error: {e}")
             return None
+
+    @staticmethod
+    def get_app_version_from_config_json(default: str = "") -> str:
+        try:
+            data = Utils.read_dict_from_json(AppPath.ConfigJson)
+            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+                v = data[0].get("version")
+                return str(v) if v is not None else default
+            if isinstance(data, dict):
+                v = data.get("version")
+                return str(v) if v is not None else default
+            return default
+        except Exception:
+            return default
 
     @staticmethod
     def get_ico_path():
@@ -153,6 +164,35 @@ class Utils:
                 return f'{python_path} {script_path}'
 
     @staticmethod
+    def get_runner_execute_file():
+        """Return the command prefix used to execute runner.
+
+        - Frozen (PyInstaller): resolve sibling executable: auto-clock-runner(.exe)
+        - Dev: resolve venv python + src/runner/runner_main.py
+        """
+        if getattr(sys, 'frozen', False):
+            base_dir = Path(sys.executable).absolute().parent
+            runner_name = "auto-clock-runner.exe" if os.name == 'nt' else "auto-clock-runner"
+            runner_path = (base_dir / runner_name).absolute()
+            if not runner_path.exists():
+                raise Exception(f"Runner executable not found: {runner_path}")
+            if os.name == 'nt':
+                return f'"{str(runner_path)}"'
+            return str(runner_path)
+
+        if os.name == 'nt':
+            python_exe = Path(__file__).parent.parent.parent / ".venv" / "Scripts" / "python.exe"
+        else:
+            python_exe = Path(__file__).parent.parent.parent / ".venv" / "bin" / "python"
+        runner_script = Path(__file__).parent.parent.parent / "src" / "runner" / "runner_main.py"
+
+        python_path = str(python_exe)
+        script_path = str(runner_script)
+        if os.name == 'nt':
+            return f'"{python_path}" "{script_path}"'
+        return f'{python_path} {script_path}'
+
+    @staticmethod
     def replace_signs(string):
         ret = (string.
                replace(":", "_").
@@ -181,10 +221,18 @@ class Utils:
             return None
 
     @staticmethod
-    def download_edge_web_driver():
+    def download_edge_web_driver(target_os: str | None = None, target_arch: str | None = None):
         try:
-            if os.path.exists(AppPath.DriversRoot):
-                os.makedirs(AppPath.DriversRoot,exist_ok=True)
+            old_wdm_os = os.environ.get("WDM_OS")
+            old_wdm_arch = os.environ.get("WDM_ARCH")
+
+            if target_os:
+                os.environ["WDM_OS"] = str(target_os)
+            if target_arch:
+                os.environ["WDM_ARCH"] = str(target_arch)
+
+            if not os.path.exists(AppPath.DriversRoot):
+                os.makedirs(AppPath.DriversRoot, exist_ok=True)
 
             driver_cache = DriverCacheManager(
                 root_dir=AppPath.DriversRoot
@@ -205,24 +253,15 @@ class Utils:
             Log.error(f'DownLoad driver failed: {e}')
             return False, str(e)
 
-        return True, driver_path
+        finally:
+            if old_wdm_os is None:
+                os.environ.pop("WDM_OS", None)
+            else:
+                os.environ["WDM_OS"] = old_wdm_os
 
-class QtUI:
-    @staticmethod
-    def create_label(message, size=11, length=150, family="Arial", width_policy=None, height_policy=None,
-                     alignment=None, fixed_width=None, fixed_height=None):
-        label = QLabel(message)
-        font = QFont()
-        font.setFamily(family)
-        font.setPointSize(size)
-        label.setFont(font)
-        label.setFixedWidth(length)
-        if width_policy is not None and height_policy is not None:
-            label.setSizePolicy(width_policy, height_policy)
-        if alignment is not None:
-            label.setAlignment(alignment)
-        if fixed_width is not None:
-            label.setFixedWidth(fixed_width)
-        if fixed_height is not None:
-            label.setFixedHeight(fixed_height)
-        return label
+            if old_wdm_arch is None:
+                os.environ.pop("WDM_ARCH", None)
+            else:
+                os.environ["WDM_ARCH"] = old_wdm_arch
+
+        return True, driver_path

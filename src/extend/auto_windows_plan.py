@@ -27,9 +27,10 @@ def create_scheduled_task(
     :return: 创建成功返回 True，失败返回 False
     """
     run_as_admin: bool = True
-    exe_path = Utils.get_execute_file()
-    if not exe_path: raise Exception("Can't get execute file path.")
-    operation = f'{exe_path} --task_id={task_id}'
+    runner_cmd = Utils.get_runner_execute_file()
+    if not runner_cmd:
+        raise Exception("Can't get runner execute file path.")
+    operation = f'{runner_cmd} --task_id={task_id}'
 
     cmd = [
         "schtasks", "/create",
@@ -104,25 +105,25 @@ def delete_invalid_plan(plan_dict):
         execute_day = plan_dict.get(Key.ExecuteDay)
         execute_date = datetime.strptime(execute_day, "%Y-%m-%d").date()
         if execute_date < datetime.today().date():
-            plan_name = plan_dict.get(Key.WindowsPlanName)
+            plan_name = plan_dict.get(Key.SystemPlanName)
             Log.info(f"Plan: {plan_name} has been invalid, it will be deleted.")
             delete_scheduled_task(plan_name)
             return True
 
     elif plan_dict.get(Key.TriggerType) == Key.Multiple:
         deleted_day = []
-        for execute_day in plan_dict.get(Key.WindowsPlanName):
+        for execute_day in plan_dict.get(Key.SystemPlanName):
             execute_date = datetime.strptime(execute_day, "%Y-%m-%d").date()
             if execute_date < datetime.today().date():
                 deleted_day.append(execute_day)
 
         for execute_day in deleted_day:
-            plan_name = plan_dict.get(Key.WindowsPlanName).get(execute_day)
+            plan_name = plan_dict.get(Key.SystemPlanName).get(execute_day)
             Log.info(f"Plan: {plan_name} has been invalid, it will be deleted.")
             delete_scheduled_task(plan_name)
-            plan_dict.get(Key.WindowsPlanName).pop(execute_day)
+            plan_dict.get(Key.SystemPlanName).pop(execute_day)
 
-        if len(plan_dict.get(Key.WindowsPlanName)) == 0:
+        if len(plan_dict.get(Key.SystemPlanName)) == 0:
             return True
         else:
             return False
@@ -154,7 +155,8 @@ def is_task_invalid(task_name: str):
     try:
         result = subprocess.run(
             ["schtasks", "/query", "/tn", task_name],
-            shell=True, encoding="gbk", capture_output=True
+            shell=True, encoding="gbk", capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         # 如果返回码不为0或者输出中包含特定的错误信息，表示任务不存在或失效
         if result.returncode != 0 or "找不到指定的任务" in result.stderr or "not found" in result.stderr:
@@ -176,7 +178,8 @@ def delete_scheduled_task(task_name: str):
         Log.info(f"Delete plan: {task_name}")
         result = subprocess.run(
             ["schtasks", "/delete", "/tn", task_name, "/f"],
-            shell=True, encoding="gbk", capture_output=True
+            shell=True, encoding="gbk", capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         if "成功" in result.stdout or result.returncode == 0:
             Log.info(f"已删除计划任务：{task_name}")
@@ -210,21 +213,21 @@ def create_task(task):
             raise Exception(message)
 
         # 删除旧任务
-        delete_scheduled_task(task.get(Key.WindowsPlanName))
+        delete_scheduled_task(task.get(Key.SystemPlanName))
 
         ui_trigger_type = task.get(Key.TriggerType)
         ok = False
         if ui_trigger_type == Key.Once or ui_trigger_type == Key.Multiple:
             ok = create_scheduled_task(
-                task_name=task.get(Key.WindowsPlanName),
+                task_name=task.get(Key.SystemPlanName),
                 task_id=task.get(Key.TaskID),
                 trigger_type=Key.Once,
                 day=task.get(Key.ExecuteDay),
                 time=task.get(Key.ExecuteTime)
             )
-        elif ui_trigger_type == Key.Daily:
+        elif ui_trigger_type == Key.Daily or ui_trigger_type == Key.SmartHoliday:
             ok = create_scheduled_task(
-                task_name=task.get(Key.WindowsPlanName),
+                task_name=task.get(Key.SystemPlanName),
                 task_id=task.get(Key.TaskID),
                 trigger_type=Key.Daily,
                 day=None,
@@ -232,7 +235,7 @@ def create_task(task):
             )
         elif ui_trigger_type == Key.Weekly:
             ok = create_scheduled_task(
-                task_name=task.get(Key.WindowsPlanName),
+                task_name=task.get(Key.SystemPlanName),
                 task_id=task.get(Key.TaskID),
                 trigger_type=Key.Weekly,
                 day=task.get(Key.ExecuteDay),
@@ -240,7 +243,7 @@ def create_task(task):
             )
         elif ui_trigger_type == Key.Monthly:
             ok = create_scheduled_task(
-                task_name=task.get(Key.WindowsPlanName),
+                task_name=task.get(Key.SystemPlanName),
                 task_id=task.get(Key.TaskID),
                 trigger_type=Key.Monthly,
                 day=task.get(Key.ExecuteDay),
@@ -249,5 +252,5 @@ def create_task(task):
         return ok, None
     except Exception as e:
         Log.error(f"Create task error: {str(e)}")
-        delete_scheduled_task(task.get(Key.WindowsPlanName))
+        delete_scheduled_task(task.get(Key.SystemPlanName))
         return False, e

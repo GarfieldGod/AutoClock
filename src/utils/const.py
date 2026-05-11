@@ -1,4 +1,5 @@
 import os
+import posixpath
 import sys
 from pathlib import Path
 from dataclasses import dataclass
@@ -13,7 +14,10 @@ class Key:
     TriggerType: str = "trigger_type"
     DayTimeType: str = "day_time_type"
     Operation: str = "operation"
-    WindowsPlanName: str = "windows_plan_name"
+    # 用户输入的计划名称（用于展示/生成系统计划任务名的前缀）
+    PlanName: str = "plan_name"
+    # 系统侧真实的计划任务名称（Windows TaskScheduler / Linux crontab 标识）
+    SystemPlanName: str = "system_plan_name"
     ExecuteTime: str = "execute_time"
     ExecuteDay: str = "execute_day"
     ExecuteDays: str = "execute_days"
@@ -33,6 +37,7 @@ class Key:
     Daily: str = "Daily"
     Weekly: str = "Weekly"
     Monthly: str = "Monthly"
+    SmartHoliday: str = "SmartHoliday"
 
     Random: str = "Random"
     Specify: str = "Specify"
@@ -60,6 +65,20 @@ class Key:
     DefaultLinuxPlanName: str = "AutoClock_Linux_Plan"
     Unknown: str = "Unknown"
     Empty: str = ""
+    LinuxUserName: str = "LinuxUserName"
+    LinuxDisplay: str = "linux_display"
+    CheckLinuxCredentialsOnPlanCreate: str = "check_linux_credentials_on_plan_create"
+    CheckUpdateOnStartup: str = "check_update_on_startup"
+
+    SshEnabled: str = "ssh_enabled"
+    SshHost: str = "ssh_host"
+    SshUsername: str = "ssh_username"
+    SshPassword: str = "ssh_password"
+    SshUsePrivateKey: str = "ssh_use_private_key"
+    SshPrivateKeyPath: str = "ssh_private_key_path"
+    SshServerPlatform: str = "ssh_server_platform"
+    SshRemoteAppRoot: str = "ssh_remote_app_root"
+
 
 @dataclass
 class AppPath:
@@ -82,6 +101,7 @@ class AppPath:
     
     DataJson: str = os.path.join(DataRoot, "data.json")
     TasksJson: str = os.path.join(DataRoot, "tasks.json")
+    RunnerResultJson: str = os.path.join(DataRoot, "runner_result.json")
     if hasattr(sys, '_MEIPASS'):
         ProjectRoot = sys._MEIPASS
     else:
@@ -89,10 +109,43 @@ class AppPath:
     ConfigJson: str = os.path.join(ProjectRoot, "config.json")
     UiResourcePath: str = os.path.join(ProjectRoot, "ui", "resource")
 
+    RemoteAppRoot: str | None = None
+    RemoteLogRoot: str | None = None
+    RemoteDataRoot: str | None = None
+    RemoteBackupRoot: str | None = None
+    RemoteDriversRoot: str | None = None
+    RemoteScreenshotRoot: str | None = None
+
+    @staticmethod
+    def update_remote(app_root_abs: str):
+        app_root_abs = str(app_root_abs or "").strip()
+        if not app_root_abs.startswith("/"):
+            raise ValueError(f"remote app_root must be an absolute path: {app_root_abs}")
+
+        AppPath.RemoteAppRoot = app_root_abs.rstrip("/")
+        AppPath.RemoteLogRoot = posixpath.join(AppPath.RemoteAppRoot, "log")
+        AppPath.RemoteDataRoot = posixpath.join(AppPath.RemoteAppRoot, "data")
+        AppPath.RemoteBackupRoot = posixpath.join(AppPath.RemoteAppRoot, "backup")
+        AppPath.RemoteDriversRoot = posixpath.join(AppPath.RemoteAppRoot, "driver")
+        AppPath.RemoteScreenshotRoot = posixpath.join(AppPath.RemoteAppRoot, "screenshot")
+
+    @staticmethod
+    def clear_remote():
+        AppPath.RemoteAppRoot = None
+        AppPath.RemoteLogRoot = None
+        AppPath.RemoteDataRoot = None
+        AppPath.RemoteBackupRoot = None
+        AppPath.RemoteDriversRoot = None
+        AppPath.RemoteScreenshotRoot = None
+
+
 @dataclass
 class WebPath:
     AppConfigPathGitee: str = "https://gitee.com/garfieldgod/auto-clock/raw/master/config.json"
-    AppConfigPathGitHub: str = "https://github.com/garfieldgod/auto-clock/raw/master/config.json"
+    AppConfigPathGitHub: str = "https://github.com/GarfieldGod/auto-clock/raw/master/config.json"
     AppProjectPath: str = "https://github.com/GarfieldGod/auto-clock"
     NeusoftKQPath: str = "https://kq.neusoft.com/"
     NeusoftKQLoginPath: str = "https://kq.neusoft.com/login"
+    LinuxRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/linux-runner-{version}.tar.gz"
+    LocalWindowsRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-runner-{version}-windows.zip"
+    LocalLinuxRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-runner-{version}-linux.tar.gz"

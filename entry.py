@@ -3,18 +3,20 @@ import os
 import time
 import random
 import argparse
-from datetime import datetime
+import subprocess
+from datetime import datetime, date
+from pathlib import Path
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QCoreApplication
 
 from src.utils.log import Log
 from src.utils.utils import Utils
+from src.utils.runner_installer import RunnerInstaller
 from src.ui.ui import ConfigWindow
-from src.core.clock_manager import run_clock
 from src.utils.const import Key, AppPath
-from src.extend.email_server import send_email_by_result
 from ui.init_ui import init_ui
+import chinese_calendar as calendar
 
 # 根据操作系统选择正确的网络管理模块
 system_name = os.name
@@ -59,7 +61,11 @@ if __name__ == '__main__':
     )
     parser.add_argument("--task_id", help="指定要执行的任务ID")
     parser.add_argument("--headless", action="store_true", help="以无头模式运行（不显示图形界面）")
-    parser.add_argument("--version", action="version", version="%(prog)s 1.0")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {Utils.get_app_version_from_config_json(default='unknown')}",
+    )
     
     # 添加使用示例
     parser.description = """
@@ -75,12 +81,24 @@ Auto-Clock - 自动打卡工具
     
     args = parser.parse_args()
 
+    def ensure_local_runner_ready() -> bool:
+        if not getattr(sys, 'frozen', False):
+            return True
+        version = Utils.get_app_version_from_config_json(default="")
+        ok, _, error = RunnerInstaller.ensure_local_runner(Path(sys.executable).absolute().parent, version)
+        if not ok:
+            Log.error(f"Runner检查/下载失败: {error}")
+            return False
+        return True
+
     clean_invalid_windows_plan()
 
     # 修复GUI启动逻辑：只有当没有任何参数时才启动GUI
     use_gui = not any(vars(args).values())
     if use_gui:
         try:
+            if not ensure_local_runner_ready():
+                sys.exit(1)
             use_old_gui = False
             if use_old_gui:
                 app = QApplication(sys.argv)
@@ -113,78 +131,19 @@ Auto-Clock - 自动打卡工具
             Log.error("使用 --help 参数查看所有可用选项")
             sys.exit(1)
 
-        config_data = Utils.read_dict_from_json(AppPath.DataJson)
-        send_email_success = False
-        send_email_failed = False
-        email = None
-        if config_data and config_data.get(Key.NotificationEmail):
-            email = config_data.get(Key.NotificationEmail)
-            send_email_success = config_data.get(Key.SendEmailWhenSuccess, False)
-            send_email_failed = config_data.get(Key.SendEmailWhenFailed, False)
+        if not args.task_id:
+            Log.error("任务模式需要提供task_id参数")
+            sys.exit(1)
 
-        ok = False
-        error = None
-        task = None
-        try:
-            if args.task_id:
-                task = Utils.find_task(args.task_id)
-                Log.info(f"Auto Clock Get Task Id: {args.task_id}")
-                if not task:
-                    raise Exception(f"Task ID: {args.task_id} not found.")
-                operation = task.get(Key.Operation)
-                day_time_type = task.get(Key.DayTimeType)
-                if day_time_type and day_time_type == Key.Random:
-                    time_offset = task.get(Key.TimeOffset, 0)
-                    random_sec = random.randint(0, time_offset)
-                    Log.info(f"将等待 {random_sec} 秒...")
-                    time.sleep(random_sec)
-                    Log.info("等待结束！继续执行任务")
+        if not ensure_local_runner_ready():
+            sys.exit(1)
 
-                Log.info(f"Task ID: {args.task_id} has found, Task Name: {task.get(Key.TaskName)} Operation: {operation}")
-                start_time = datetime.now()
+        runner_cmd = Utils.get_runner_execute_file()
+        cmd = f"{runner_cmd} --task_id={args.task_id}"
+        if args.headless:
+            cmd += " --headless"
 
-                if operation == Key.AutoClock:
-                    ok, error = run_clock()
-                elif operation == Key.ShutDownSystem:
-                    ok, error = run_windows_shutdown(30)
-                elif operation == Key.SystemSleep:
-                    ok, error = run_windows_sleep(30)
-                elif operation == Key.DisconnectNetwork:
-                    # 对于断网操作，Windows和Linux都支持延迟参数
-                    ok, error = disconnect_network(30)
-                elif operation == Key.ConnectNetwork:
-                    # 对于联网操作，通常不需要延迟
-                    ok, error = connect_network()
-                    # 联网后等待10秒，确保网络已经稳定连接
-                    if ok:
-                        Log.info("网络连接成功，等待10秒确保网络稳定...")
-                        time.sleep(10)
-                        Log.info("网络稳定等待完成")
-                else:
-                    error = f"No operation specified for: {operation}"
-
-                end_time = datetime.now()
-                elapsed_time = end_time - start_time
-                elapsed_sec = elapsed_time.total_seconds()
-                task[Key.CostTime] = int(elapsed_sec)
-                Log.info(f"Finish Task. Start at: {start_time} End at: {end_time} Cost time: {elapsed_sec} sec")
-            else:
-                exit()
-        except Exception as e:
-            error = str(e)
-
-        config_data = Utils.read_dict_from_json(AppPath.DataJson)
-        if not config_data or not config_data.get(Key.NotificationEmail): exit()
-
-        email = config_data.get(Key.NotificationEmail)
-        send_email_success = config_data.get(Key.SendEmailWhenSuccess, False)
-        send_email_failed = config_data.get(Key.SendEmailWhenFailed, False)
-
-        if not error: error = "Unknow Error"
-        Log.info(f"task: {task}")
-        Log.info(f"ok: {ok} error: {error}")
-        Log.info(f"email: {email} send_email_success: {send_email_success} send_email_failed: {send_email_failed}")
-        
-        send_email_by_result(task=task, email=email, send_email_success=send_email_success,
-                             send_email_failed=send_email_failed, ok=ok, error=error)
+        Log.info(f"Delegate task to runner: {cmd}")
+        result = subprocess.run(cmd, shell=True)
+        sys.exit(result.returncode)
     Log.close()
