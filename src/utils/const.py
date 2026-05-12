@@ -101,6 +101,7 @@ class AppPath:
         DriversRoot = os.path.join(AppRoot, "driver")
         ScreenshotRoot = os.path.join(AppRoot, "screenshot")
     
+    UpdaterRoot: str = os.path.join(AppRoot, "updater")
     DataJson: str = os.path.join(DataRoot, "data.json")
     TasksJson: str = os.path.join(DataRoot, "tasks.json")
     RunnerResultJson: str = os.path.join(DataRoot, "runner_result.json")

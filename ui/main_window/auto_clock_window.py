@@ -1,6 +1,8 @@
 import os
 import re
+import shutil
 import subprocess
+import sys
 import webbrowser
 from pathlib import Path
 
@@ -38,6 +40,7 @@ class AutoClockWindow(MainWindow):
         self._update_threads = []
         self._update_install_thread: AppUpdateInstallThread | None = None
         self._update_progress_dialog: QProgressDialog | None = None
+        self._update_cancelled = False
 
         self._local_data_root = AppPath.DataRoot
         self._local_data_json = AppPath.DataJson
@@ -174,27 +177,56 @@ class AutoClockWindow(MainWindow):
             MessageBox("An update task is already in progress.")
             return
 
-        dialog = QProgressDialog("Preparing to download update package...", "", 0, 100, self)
+        self._update_cancelled = False
+
+        dialog = QProgressDialog("Preparing to download update package...", None, 0, 100, self)
         dialog.setWindowTitle("Auto Update")
         dialog.setWindowModality(Qt.ApplicationModal)
-        dialog.setCancelButton(None)
         dialog.setMinimumDuration(0)
         dialog.setAutoClose(False)
         dialog.setAutoReset(False)
         dialog.setValue(0)
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         dialog.show()
         self._update_progress_dialog = dialog
 
         thread = AppUpdateInstallThread(remote_ver)
         self._update_install_thread = thread
 
+        def _on_canceled():
+            self._update_cancelled = True
+            if self._update_progress_dialog is not None:
+                self._update_progress_dialog.hide()
+                self._update_progress_dialog.deleteLater()
+                self._update_progress_dialog = None
+
+            if self._update_install_thread is not None and self._update_install_thread.isRunning():
+                self._update_install_thread.terminate()
+                self._update_install_thread.wait(2000)
+                self._update_install_thread = None
+
+            updater_dir = Path(AppPath.UpdaterRoot)
+            platform_name = "windows" if os.name == "nt" else "linux"
+            target_dir = updater_dir / f"auto-clock-{remote_ver}-{platform_name}"
+            if target_dir.exists():
+                shutil.rmtree(target_dir, ignore_errors=True)
+            Log.info(f"Auto-update cancelled by user, cleaned: {target_dir}")
+
+        dialog.canceled.connect(_on_canceled)
+
         def _on_progress(percent: int, message: str):
+            if self._update_cancelled:
+                return
             if self._update_progress_dialog is None:
                 return
             self._update_progress_dialog.setLabelText(message or "Updating...")
             self._update_progress_dialog.setValue(max(0, min(100, int(percent))))
 
         def _on_finished(ok: bool, message: str, launch_path: str):
+            if self._update_cancelled:
+                self._update_install_thread = None
+                return
+
             if self._update_progress_dialog is not None:
                 self._update_progress_dialog.setValue(100)
                 self._update_progress_dialog.hide()
@@ -208,18 +240,62 @@ class AutoClockWindow(MainWindow):
                 MessageBox(f"Auto-update failed: {message}")
                 return
 
-            result = QMessageBox.question(
-                self,
-                "Update Complete",
-                f"{message}\n\nLaunch the new version and exit current program?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes,
-            )
-            if result == QMessageBox.Yes:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Update Complete")
+            msg_box.setText("A new version has been downloaded.<br>Restart now to apply the update?")
+            msg_box.setIcon(QMessageBox.Question)
+            restart_btn = msg_box.addButton("Restart Now", QMessageBox.AcceptRole)
+            later_btn = msg_box.addButton("Later", QMessageBox.RejectRole)
+            msg_box.setDefaultButton(restart_btn)
+            msg_box.exec_()
+            if msg_box.clickedButton() == restart_btn:
                 try:
                     launch = Path(str(launch_path or "").strip())
                     if launch.exists():
-                        subprocess.Popen([str(launch)], cwd=str(launch.parent))
+                        new_dir = launch.parent
+                        app_dir = Path(sys.executable).resolve().parent
+                        updater_dir = Path(AppPath.UpdaterRoot)
+                        updater_dir.mkdir(parents=True, exist_ok=True)
+
+                        if sys.platform == "win32":
+                            bat_path = updater_dir / "_replace.bat"
+                            bat_content = (
+                                f'@echo off\n'
+                                f'timeout /t 3 /nobreak >nul\n'
+                                f'robocopy "{new_dir}" "{app_dir}" /E /MOVE >nul 2>&1\n'
+                                f'if exist "{new_dir}" rmdir /S /Q "{new_dir}"\n'
+                                f'start "" "{app_dir / launch.name}"\n'
+                                f'del "%~f0"\n'
+                            )
+                            bat_path.write_text(bat_content, encoding="utf-8")
+                            startupinfo = subprocess.STARTUPINFO()
+                            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                            startupinfo.wShowWindow = subprocess.SW_HIDE
+                            subprocess.Popen(
+                                [str(bat_path)],
+                                shell=True,
+                                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                                startupinfo=startupinfo,
+                            )
+                        else:
+                            sh_path = updater_dir / "_replace.sh"
+                            sh_content = (
+                                f'#!/bin/bash\n'
+                                f'sleep 3\n'
+                                f'cp -a "{new_dir}/." "{app_dir}/"\n'
+                                f'rm -rf "{new_dir}"\n'
+                                f'nohup "{app_dir / launch.name}" > /dev/null 2>&1 &\n'
+                                f'rm -f "$0"\n'
+                            )
+                            sh_path.write_text(sh_content, encoding="utf-8")
+                            os.chmod(str(sh_path), 0o755)
+                            subprocess.Popen(
+                                [str(sh_path)],
+                                shell=True,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                            )
+                        QApplication.quit()
                     else:
                         webbrowser.open_new(self._release_page(remote_ver))
                 except Exception:
