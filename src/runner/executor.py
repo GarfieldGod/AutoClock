@@ -190,10 +190,6 @@ def run_task_by_id(task_id: str, headless: bool = False):
             cost_time_sec=elapsed_sec,
         )
         _write_runner_result(runner_result)
-        _update_task_runtime_fields(task_id, {
-            Key.LastRunResult: task_last_result,
-            Key.CostTime: elapsed_sec,
-        })
 
     except Exception as e:
         end_time = datetime.now()
@@ -209,10 +205,18 @@ def run_task_by_id(task_id: str, headless: bool = False):
             cost_time_sec=int((end_time - start_time).total_seconds()),
         )
         _write_runner_result(runner_result)
-        _update_task_runtime_fields(task_id, {
-            Key.LastRunResult: f"Failed: {error or 'Unknown Error'}",
-            Key.CostTime: int((end_time - start_time).total_seconds()),
-        })
+
+    finally:
+        # Always flush last_run_result back to tasks.json, even if run_clock
+        # raised SystemExit / KeyboardInterrupt or any BaseException.
+        end_time = datetime.now()
+        elapsed_sec = int((end_time - start_time).total_seconds())
+        if task is not None:
+            result_text = str(task.get(Key.LastRunResult, "-") or "-")
+            _update_task_runtime_fields(task_id, {
+                Key.LastRunResult: result_text,
+                Key.CostTime: elapsed_sec,
+            })
 
     try:
         if email:

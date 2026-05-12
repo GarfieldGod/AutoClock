@@ -171,11 +171,13 @@ class TaskListContainer(Container):
             ("Trigger", TaskListWidget.COL_TRIGGER),
             ("Time", TaskListWidget.COL_TIME),
             ("Schedule", TaskListWidget.COL_SCHEDULE),
-            ("Last Result", TaskListWidget.COL_RESULT),
+            ("Result", TaskListWidget.COL_RESULT),
             ("Status", TaskListWidget.COL_STATUS),
         ]
+        compact = self._is_compact_screen()
+        header_font_size = 9 if compact else 10
         for title, width in header_defs:
-            if title == "Last Result":
+            if title == "Result":
                 holder = QWidget()
                 holder.setFixedWidth(width)
                 holder_layout = QHBoxLayout(holder)
@@ -184,7 +186,7 @@ class TaskListContainer(Container):
 
                 label = QLabel(title)
                 f = QFont()
-                f.setPointSize(10)
+                f.setPointSize(header_font_size)
                 f.setBold(False)
                 label.setFont(f)
                 label.setContentsMargins(0, 0, 0, 0)
@@ -211,7 +213,7 @@ class TaskListContainer(Container):
             label = QLabel(title)
             label.setFixedWidth(width)
             f = QFont()
-            f.setPointSize(10)
+            f.setPointSize(header_font_size)
             f.setBold(False)
             label.setFont(f)
             label.setContentsMargins(0, 0, 0, 0)

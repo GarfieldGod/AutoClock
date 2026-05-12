@@ -146,13 +146,13 @@ class TaskListWidget(QWidget):
         "status": 74,
     }
     COMPACT_COLS = {
-        "task": 96,
-        "operation": 76,
-        "trigger": 52,
-        "time": 40,
-        "schedule": 56,
-        "result": 78,
-        "status": 66,
+        "task": 90,
+        "operation": 70,
+        "trigger": 48,
+        "time": 38,
+        "schedule": 52,
+        "result": 66,
+        "status": 60,
     }
 
     COL_TASK = 104
