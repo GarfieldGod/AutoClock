@@ -136,6 +136,25 @@ class ComboBox(QComboBox):
                 self.setCurrentIndex(idx)
 
 class TaskListWidget(QWidget):
+    NORMAL_COLS = {
+        "task": 104,
+        "operation": 86,
+        "trigger": 60,
+        "time": 44,
+        "schedule": 66,
+        "result": 90,
+        "status": 74,
+    }
+    COMPACT_COLS = {
+        "task": 96,
+        "operation": 76,
+        "trigger": 52,
+        "time": 40,
+        "schedule": 56,
+        "result": 78,
+        "status": 66,
+    }
+
     COL_TASK = 104
     COL_OPERATION = 86
     COL_TRIGGER = 60
@@ -143,6 +162,17 @@ class TaskListWidget(QWidget):
     COL_SCHEDULE = 66
     COL_RESULT = 90
     COL_STATUS = 74
+
+    @classmethod
+    def set_compact(cls, compact: bool):
+        cols = cls.COMPACT_COLS if compact else cls.NORMAL_COLS
+        cls.COL_TASK = cols["task"]
+        cls.COL_OPERATION = cols["operation"]
+        cls.COL_TRIGGER = cols["trigger"]
+        cls.COL_TIME = cols["time"]
+        cls.COL_SCHEDULE = cols["schedule"]
+        cls.COL_RESULT = cols["result"]
+        cls.COL_STATUS = cols["status"]
 
     def __init__(self, task, on_status_toggle=None, parent=None):
         super(TaskListWidget, self).__init__(parent)

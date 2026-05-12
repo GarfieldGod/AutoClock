@@ -7,8 +7,8 @@ import subprocess
 from datetime import datetime, date
 from pathlib import Path
 
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QCoreApplication
+from PyQt5.QtWidgets import QApplication, QProgressDialog, QMessageBox
+from PyQt5.QtCore import QCoreApplication, Qt, QObject, QThread, pyqtSignal, QEventLoop
 
 from src.utils.log import Log
 from src.utils.utils import Utils
@@ -81,15 +81,108 @@ Auto-Clock - 自动打卡工具
     
     args = parser.parse_args()
 
-    def ensure_local_runner_ready() -> bool:
+    def ensure_local_runner_ready(progress_callback=None) -> bool:
         if not getattr(sys, 'frozen', False):
             return True
         version = Utils.get_app_version_from_config_json(default="")
-        ok, _, error = RunnerInstaller.ensure_local_runner(Path(sys.executable).absolute().parent, version)
+        ok, _, error = RunnerInstaller.ensure_local_runner(
+            Path(sys.executable).absolute().parent,
+            version,
+            progress_callback=progress_callback,
+        )
         if not ok:
             Log.error(f"Runner检查/下载失败: {error}")
             return False
         return True
+
+    def ensure_local_runner_ready_with_dialog(window, app) -> bool:
+        if not getattr(sys, 'frozen', False):
+            return True
+
+        base_dir = Path(sys.executable).absolute().parent
+        version = Utils.get_app_version_from_config_json(default="")
+
+        if RunnerInstaller.is_local_runner_ready(base_dir, version):
+            return True
+
+        class _RunnerInstallWorker(QObject):
+            progress = pyqtSignal(str, int, str)
+            finished = pyqtSignal(bool, str, bool)
+
+            def __init__(self, install_base_dir: Path, install_version: str):
+                super().__init__()
+                self._install_base_dir = install_base_dir
+                self._install_version = install_version
+
+            def run(self):
+                state = {"downloaded": False}
+
+                def _progress(phase: str, percent: int, message: str):
+                    if str(phase or "").lower() == "downloading":
+                        state["downloaded"] = True
+                    self.progress.emit(str(phase or ""), int(percent), str(message or ""))
+
+                ok, _, error = RunnerInstaller.ensure_local_runner(
+                    self._install_base_dir,
+                    self._install_version,
+                    progress_callback=_progress,
+                )
+                self.finished.emit(bool(ok), str(error or ""), bool(state.get("downloaded")))
+
+        dialog = QProgressDialog("Checking runner...", "", 0, 100, window)
+        dialog.setWindowTitle("Runner Setup")
+        dialog.setWindowModality(Qt.ApplicationModal)
+        dialog.setCancelButton(None)
+        dialog.setMinimumDuration(0)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.setValue(0)
+
+        thread = QThread(window)
+        worker = _RunnerInstallWorker(base_dir, version)
+        worker.moveToThread(thread)
+
+        state = {"ok": False, "error": "", "downloaded": False}
+        wait_loop = QEventLoop()
+
+        def _on_progress(_phase: str, percent: int, message: str):
+            dialog.setLabelText(message or "Preparing runner...")
+            dialog.setValue(max(0, min(100, int(percent))))
+
+        def _on_finished(ok: bool, error: str, downloaded: bool):
+            state["ok"] = bool(ok)
+            state["error"] = str(error or "")
+            state["downloaded"] = bool(downloaded)
+            wait_loop.quit()
+
+        thread.started.connect(worker.run)
+        worker.progress.connect(_on_progress)
+        worker.finished.connect(_on_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+
+        dialog.show()
+        thread.start()
+        wait_loop.exec_()
+
+        dialog.setValue(100)
+        dialog.hide()
+        dialog.deleteLater()
+
+        if state.get("ok"):
+            if state.get("downloaded"):
+                QMessageBox.information(window, "Runner Setup", "Runner download completed successfully.")
+            return True
+
+        Log.error(f"Runner检查/下载失败: {state.get('error')}")
+        QMessageBox.warning(
+            window,
+            "Runner Unavailable",
+            "Runner download or verification failed. GUI will continue, but scheduled task execution may fail.\n"
+            "Please use Settings -> Check to retry.",
+        )
+        return False
 
     clean_invalid_windows_plan()
 
@@ -97,8 +190,6 @@ Auto-Clock - 自动打卡工具
     use_gui = not any(vars(args).values())
     if use_gui:
         try:
-            if not ensure_local_runner_ready():
-                Log.error("Runner不可用，继续启动GUI；计划任务执行时可能失败，请在设置页中手动检查更新。")
             use_old_gui = False
             if use_old_gui:
                 app = QApplication(sys.argv)
@@ -106,7 +197,7 @@ Auto-Clock - 自动打卡工具
                 window.show()
                 app.exec_()
             else:
-                init_ui()
+                init_ui(startup_hook=lambda window, app: ensure_local_runner_ready_with_dialog(window, app))
         except Exception as e:
             error_msg = str(e)
             Log.error(f"GUI启动失败: {error_msg}")

@@ -4,7 +4,7 @@ from datetime import datetime
 from PyQt5.QtCore import QSize, QDate, Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QListWidget, QListWidgetItem, \
-    QDialog, QWidget
+    QDialog, QWidget, QApplication
 
 from src.ui.ui_message import MessageBox
 from src.utils.const import AppPath, Key
@@ -142,7 +142,22 @@ class TaskListContainer(Container):
         except Exception:
             return False
 
+    @staticmethod
+    def _is_compact_screen() -> bool:
+        try:
+            app = QApplication.instance()
+            if app is None:
+                return False
+            screen = app.primaryScreen()
+            if screen is None:
+                return False
+            return int(screen.availableGeometry().width()) <= 1366
+        except Exception:
+            return False
+
     def init_ui_layout(self):
+        TaskListWidget.set_compact(self._is_compact_screen())
+
         group_system = QGroupBox(f"System Plan List")
         group_system.setStyleSheet(get_group_css({}))
         layout_system = QVBoxLayout(group_system)
@@ -209,6 +224,7 @@ class TaskListContainer(Container):
 
         self.system_plan_list.setSpacing(2)
         self.system_plan_list.setUniformItemSizes(True)
+        self.system_plan_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         layout_system.addWidget(self.system_plan_list)
 
         layout_plan_list_buttons = QHBoxLayout()
