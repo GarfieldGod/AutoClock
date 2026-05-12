@@ -1,9 +1,10 @@
 import platform
 from datetime import datetime
 
-from PyQt5.QtCore import QSize, QDate
+from PyQt5.QtCore import QSize, QDate, Qt
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QListWidget, QListWidgetItem, \
-    QDialog
+    QDialog, QWidget, QApplication
 
 from src.ui.ui_message import MessageBox
 from src.utils.const import AppPath, Key
@@ -48,10 +49,10 @@ class SystemTaskPage(PageContent):
             self.add_container(nettest, 4,2)
 
 class TaskListContainer(Container):
-    task_list=[]
     def __init__(self, x, y):
         super(TaskListContainer, self).__init__(x, y)
 
+        self.task_list = []
         self.system_plan_list = QListWidget()
         self.button_create = QPushButton("Create")
         self.button_delete = QPushButton("Delete")
@@ -68,14 +69,20 @@ class TaskListContainer(Container):
             pass
         return default
 
-    def _sync_tasks_if_needed(self):
-        try:
-            w = self.window()
-            if hasattr(w, "is_remote_connected") and w.is_remote_connected():
-                if hasattr(w, "sync_remote_tasks_json"):
-                    w.sync_remote_tasks_json()
-        except Exception:
-            pass
+    @staticmethod
+    def _error_text(error, default: str) -> str:
+        text = str(error or "").strip()
+        return text if text else default
+
+    def _normalize_task(self, task: dict) -> tuple[dict, bool]:
+        changed = False
+        if Key.Enabled not in task:
+            task[Key.Enabled] = True
+            changed = True
+        if Key.LastRunResult not in task:
+            task[Key.LastRunResult] = "-"
+            changed = True
+        return task, changed
 
     def _read_tasks(self):
         try:
@@ -135,11 +142,91 @@ class TaskListContainer(Container):
         except Exception:
             return False
 
+    @staticmethod
+    def _is_compact_screen() -> bool:
+        try:
+            app = QApplication.instance()
+            if app is None:
+                return False
+            screen = app.primaryScreen()
+            if screen is None:
+                return False
+            return int(screen.availableGeometry().width()) <= 1366
+        except Exception:
+            return False
+
     def init_ui_layout(self):
+        TaskListWidget.set_compact(self._is_compact_screen())
+
         group_system = QGroupBox(f"System Plan List")
         group_system.setStyleSheet(get_group_css({}))
         layout_system = QVBoxLayout(group_system)
 
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(6, 0, 6, 0)
+        header_layout.setSpacing(6)
+        header_defs = [
+            ("Task Name", TaskListWidget.COL_TASK),
+            ("Operation", TaskListWidget.COL_OPERATION),
+            ("Trigger", TaskListWidget.COL_TRIGGER),
+            ("Time", TaskListWidget.COL_TIME),
+            ("Schedule", TaskListWidget.COL_SCHEDULE),
+            ("Result", TaskListWidget.COL_RESULT),
+            ("Status", TaskListWidget.COL_STATUS),
+        ]
+        compact = self._is_compact_screen()
+        header_font_size = 9 if compact else 10
+        for title, width in header_defs:
+            if title == "Result":
+                holder = QWidget()
+                holder.setFixedWidth(width)
+                holder_layout = QHBoxLayout(holder)
+                holder_layout.setContentsMargins(0, 0, 0, 0)
+                holder_layout.setSpacing(2)
+
+                label = QLabel(title)
+                f = QFont()
+                f.setPointSize(header_font_size)
+                f.setBold(False)
+                label.setFont(f)
+                label.setContentsMargins(0, 0, 0, 0)
+                label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+                btn_refresh = QPushButton("↻")
+                btn_refresh.setFixedSize(16, 16)
+                btn_refresh.setCursor(Qt.PointingHandCursor)
+                btn_refresh.setToolTip("Refresh last results")
+                btn_refresh.setStyleSheet(
+                    "QPushButton { border:none; color:#4b5563; font-size:12px; font-weight:600; padding:0; }"
+                    "QPushButton:hover { color:#111827; }"
+                    "QPushButton:pressed { color:#2563eb; }"
+                )
+                btn_refresh.clicked.connect(self.refresh_last_results)
+
+                holder_layout.addStretch(1)
+                holder_layout.addWidget(label)
+                holder_layout.addWidget(btn_refresh)
+                holder_layout.addStretch(1)
+                header_layout.addWidget(holder, 0)
+                continue
+
+            label = QLabel(title)
+            label.setFixedWidth(width)
+            f = QFont()
+            f.setPointSize(header_font_size)
+            f.setBold(False)
+            label.setFont(f)
+            label.setContentsMargins(0, 0, 0, 0)
+            if title == "Status":
+                label.setAlignment(Qt.AlignCenter)
+            else:
+                label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            header_layout.addWidget(label, 0)
+        layout_system.addLayout(header_layout)
+
+        self.system_plan_list.setSpacing(2)
+        self.system_plan_list.setUniformItemSizes(True)
+        self.system_plan_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         layout_system.addWidget(self.system_plan_list)
 
         layout_plan_list_buttons = QHBoxLayout()
@@ -156,58 +243,64 @@ class TaskListContainer(Container):
 
     def _create_plan_tasks(self, task_list_to_create):
         for task in task_list_to_create:
+            try:
+                if platform.system() == "Windows":
+                    w = self.window()
+                    if hasattr(w, "is_remote_connected") and w.is_remote_connected():
+                        svc = self._get_remote_plan_service()
+                        if svc is None:
+                            return False, "远端服务未初始化，请重新连接SSH"
+                        ok, error = svc.cron_create(task)
+                    else:
+                        ok, error = create_task(task)
+                elif platform.system() == "Linux":
+                    ok, error = create_crontab_task(task)
+                else:
+                    return False, "System not supported"
+            except Exception as e:
+                return False, self._error_text(e, "Create plan failed")
+
+            if error or not ok:
+                return False, self._error_text(error, "Create plan failed")
+        return True, None
+
+    def _delete_plan_task(self, task):
+        plan_name = task[Key.SystemPlanName]
+
+        try:
             if platform.system() == "Windows":
                 w = self.window()
                 if hasattr(w, "is_remote_connected") and w.is_remote_connected():
                     svc = self._get_remote_plan_service()
                     if svc is None:
                         return False, "远端服务未初始化，请重新连接SSH"
-                    ok, error = svc.cron_create(task)
+
+                    names = svc.task_names_from_plan(task)
+                    ok, error = svc.cron_delete(names)
                 else:
-                    ok, error = create_task(task)
+                    if task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
+                        for task_name in plan_name:
+                            ok, error = delete_scheduled_task(plan_name.get(task_name))
+                            if not ok:
+                                return False, self._error_text(error, "Delete plan failed")
+                    else:
+                        ok, error = delete_scheduled_task(plan_name)
+                        if not ok:
+                            return False, self._error_text(error, "Delete plan failed")
             elif platform.system() == "Linux":
-                ok, error = create_crontab_task(task)
-            else:
-                return False, "System not supported"
-
-            if error or not ok:
-                return False, error or "Create plan failed"
-        return True, None
-
-    def _delete_plan_task(self, task):
-        plan_name = task[Key.SystemPlanName]
-
-        if platform.system() == "Windows":
-            w = self.window()
-            if hasattr(w, "is_remote_connected") and w.is_remote_connected():
-                svc = self._get_remote_plan_service()
-                if svc is None:
-                    return False, "远端服务未初始化，请重新连接SSH"
-
-                names = svc.task_names_from_plan(task)
-                ok, error = svc.cron_delete(names)
-            else:
                 if task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
                     for task_name in plan_name:
-                        ok, error = delete_scheduled_task(plan_name.get(task_name))
+                        ok, error = delete_crontab_task(plan_name.get(task_name))
                         if not ok:
-                            return False, error or "Delete plan failed"
+                            return False, self._error_text(error, "Delete plan failed")
                 else:
-                    ok, error = delete_scheduled_task(plan_name)
+                    ok, error = delete_crontab_task(plan_name)
                     if not ok:
-                        return False, error or "Delete plan failed"
-        elif platform.system() == "Linux":
-            if task[Key.TriggerType] == Key.Multiple and isinstance(plan_name, dict):
-                for task_name in plan_name:
-                    ok, error = delete_crontab_task(plan_name.get(task_name))
-                    if not ok:
-                        return False, error or "Delete plan failed"
+                        return False, self._error_text(error, "Delete plan failed")
             else:
-                ok, error = delete_crontab_task(plan_name)
-                if not ok:
-                    return False, error or "Delete plan failed"
-        else:
-            return False, "System not supported"
+                return False, "System not supported"
+        except Exception as e:
+            return False, self._error_text(e, "Delete plan failed")
 
         return True, None
 
@@ -258,8 +351,9 @@ class TaskListContainer(Container):
 
             return True
         except Exception as e:
-            Log.error(str(e))
-            MessageBox(str(e))
+            message = self._error_text(e, "Edit task failed")
+            Log.error(message)
+            MessageBox(message)
             return False
 
     def create_system_plan(self):
@@ -304,7 +398,9 @@ class TaskListContainer(Container):
 
         if task is None: return
         self.task_list.append(task)
-        self._write_tasks(self.task_list)
+        if not self._write_tasks(self.task_list):
+            MessageBox("Save tasks failed")
+            return
         self.update_plan_list()
 
     def do_create_plan(self):
@@ -317,13 +413,17 @@ class TaskListContainer(Container):
                 if not ok:
                     raise Exception(error or "Create task failed")
 
+                task_to_json[Key.Enabled] = True
+                task_to_json[Key.LastRunResult] = "-"
+
                 MessageBox(f"Create Task: {task_to_json[Key.TaskName]} Success!")
                 Log.info(f"create system plan task: {task_to_json}")
 
                 return task_to_json
         except Exception as e:
-            Log.error(str(e))
-            MessageBox(str(e))
+            message = self._error_text(e, "Create task failed")
+            Log.error(message)
+            MessageBox(message)
             return None
 
     def edit_system_plan(self, current_item):
@@ -349,6 +449,8 @@ class TaskListContainer(Container):
                 raise Exception("Edit plan failed, invalid plan data")
 
             task_to_json, task_list_to_create = parsed
+            task_to_json[Key.Enabled] = bool(old_task.get(Key.Enabled, True))
+            task_to_json[Key.LastRunResult] = str(old_task.get(Key.LastRunResult, "-") or "-")
             ok, error = self._delete_plan_task(old_task)
             if not ok:
                 raise Exception(error or "Delete old task failed")
@@ -358,7 +460,8 @@ class TaskListContainer(Container):
                 raise Exception(error or "Create new task failed")
 
             self.task_list[task_index] = task_to_json
-            self._write_tasks(self.task_list)
+            if not self._write_tasks(self.task_list):
+                raise Exception("Save tasks failed")
             self.update_plan_list()
             MessageBox(f"Edit Task: {task_to_json[Key.TaskName]} Success!")
         except Exception as e:
@@ -393,12 +496,49 @@ class TaskListContainer(Container):
                 raise Exception(error or "Delete plan failed")
 
             self.task_list.remove(delete_task)
-            self._write_tasks(self.task_list)
+            if not self._write_tasks(self.task_list):
+                raise Exception("Save tasks failed")
             self.update_plan_list()
 
         except Exception as e:
-            Log.error(e)
-            MessageBox(e)
+            message = self._error_text(e, "Delete plan failed")
+            Log.error(message)
+            MessageBox(message)
+
+    def toggle_system_plan_enabled(self, plan_id=None, enabled=None):
+        try:
+            if not plan_id:
+                current_item = self.system_plan_list.currentItem()
+                if current_item is None:
+                    MessageBox("Please select one task")
+                    return False
+                selected_widget = self.system_plan_list.itemWidget(current_item)
+                if not selected_widget:
+                    return False
+                plan_id = selected_widget.objectName()
+
+            task_index, task = self._find_task_by_plan_id(plan_id)
+            if task is None or task_index < 0:
+                raise Exception(f"Task not found: {plan_id}")
+
+            if enabled is None:
+                new_enabled = not bool(task.get(Key.Enabled, True))
+            else:
+                new_enabled = bool(enabled)
+
+            self.task_list[task_index][Key.Enabled] = new_enabled
+            if not self._write_tasks(self.task_list):
+                raise Exception("Save task status failed")
+
+            self.update_plan_list()
+            if enabled is None:
+                MessageBox(f"Task status updated: {'ON' if new_enabled else 'OFF'}")
+            return True
+        except Exception as e:
+            message = self._error_text(e, "Update task status failed")
+            Log.error(message)
+            MessageBox(message)
+            return False
 
     def update_plan_list(self):
         try:
@@ -406,15 +546,25 @@ class TaskListContainer(Container):
             if dict_list is None: return
 
             self.system_plan_list.clear()
+            self.task_list = []
+            changed = False
             if isinstance(dict_list, list):
-                self.task_list = dict_list
-                for plan_dict in self.task_list:
-                    self.add_plan_ui(plan_dict)
+                for plan_dict in dict_list:
+                    if not isinstance(plan_dict, dict):
+                        continue
+                    normalized_task, task_changed = self._normalize_task(plan_dict)
+                    self.task_list.append(normalized_task)
+                    changed = changed or task_changed
+                    self.add_plan_ui(normalized_task)
             elif isinstance(dict_list, dict):
-                self.task_list.append(dict_list)
-                self.add_plan_ui(dict_list)
+                normalized_task, changed = self._normalize_task(dict_list)
+                self.task_list.append(normalized_task)
+                self.add_plan_ui(normalized_task)
             else:
                 raise Exception("Load tasks failed!")
+
+            if changed:
+                self._write_tasks(self.task_list)
 
         except Exception as e:
             message = f"Update windows plan list failed: {e}"
@@ -422,12 +572,20 @@ class TaskListContainer(Container):
             MessageBox(message)
 
     def add_plan_ui(self, task):
-        widget_plan_line = TaskListWidget(task)
+        widget_plan_line = TaskListWidget(task, on_status_toggle=self.toggle_system_plan_enabled)
 
         item = QListWidgetItem()
-        item.setSizeHint(QSize(0, 40))
+        item.setSizeHint(QSize(0, 34))
         self.system_plan_list.addItem(item)
         self.system_plan_list.setItemWidget(item, widget_plan_line)
+
+    def refresh_last_results(self):
+        try:
+            self.update_plan_list()
+        except Exception as e:
+            message = self._error_text(e, "Refresh last results failed")
+            Log.error(message)
+            MessageBox(message)
 
 class SystemLoginContainer(Container):
     def __init__(self, x, y):

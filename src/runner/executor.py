@@ -41,6 +41,32 @@ def _write_runner_result(result: RunnerResult):
         Log.error(f"Write runner result failed: {e}")
 
 
+def _update_task_runtime_fields(task_id: str, updates: dict):
+    if not task_id or not isinstance(updates, dict) or not updates:
+        return
+    try:
+        tasks_data = Utils.read_dict_from_json(AppPath.TasksJson)
+        if not tasks_data:
+            return
+
+        changed = False
+        if isinstance(tasks_data, list):
+            for task in tasks_data:
+                if isinstance(task, dict) and str(task.get(Key.TaskID)) == str(task_id):
+                    task.update(updates)
+                    changed = True
+                    break
+        elif isinstance(tasks_data, dict):
+            if str(tasks_data.get(Key.TaskID)) == str(task_id):
+                tasks_data.update(updates)
+                changed = True
+
+        if changed:
+            Utils.write_dict_to_file(AppPath.TasksJson, tasks_data)
+    except Exception as e:
+        Log.error(f"Update task runtime fields failed: {e}")
+
+
 def run_task_by_id(task_id: str, headless: bool = False):
     config_data = Utils.read_dict_from_json(AppPath.DataJson) or {}
 
@@ -57,6 +83,27 @@ def run_task_by_id(task_id: str, headless: bool = False):
         task = Utils.find_task(task_id)
         if not task:
             raise Exception(f"Task ID: {task_id} not found.")
+
+        enabled = bool(task.get(Key.Enabled, True))
+        if not enabled:
+            end_time = datetime.now()
+            task[Key.LastRunResult] = "Blocked"
+            task[Key.CostTime] = 0
+
+            runner_result = RunnerResult(
+                ok=True,
+                error="Task is blocked",
+                task=task,
+                start_time=start_time.isoformat(),
+                end_time=end_time.isoformat(),
+                cost_time_sec=0,
+            )
+            _write_runner_result(runner_result)
+            _update_task_runtime_fields(task_id, {
+                Key.LastRunResult: task[Key.LastRunResult],
+                Key.CostTime: 0,
+            })
+            return True, None
 
         operation = task.get(Key.Operation)
         day_time_type = task.get(Key.DayTimeType)
@@ -130,6 +177,10 @@ def run_task_by_id(task_id: str, headless: bool = False):
         if task is not None:
             task[Key.CostTime] = elapsed_sec
 
+        task_last_result = "Success" if ok else f"Failed: {error or 'Unknown Error'}"
+        if task is not None:
+            task[Key.LastRunResult] = task_last_result
+
         runner_result = RunnerResult(
             ok=ok,
             error=error,
@@ -143,6 +194,8 @@ def run_task_by_id(task_id: str, headless: bool = False):
     except Exception as e:
         end_time = datetime.now()
         error = str(e)
+        if task is not None:
+            task[Key.LastRunResult] = f"Failed: {error or 'Unknown Error'}"
         runner_result = RunnerResult(
             ok=False,
             error=error,
@@ -152,6 +205,18 @@ def run_task_by_id(task_id: str, headless: bool = False):
             cost_time_sec=int((end_time - start_time).total_seconds()),
         )
         _write_runner_result(runner_result)
+
+    finally:
+        # Always flush last_run_result back to tasks.json, even if run_clock
+        # raised SystemExit / KeyboardInterrupt or any BaseException.
+        end_time = datetime.now()
+        elapsed_sec = int((end_time - start_time).total_seconds())
+        if task is not None:
+            result_text = str(task.get(Key.LastRunResult, "-") or "-")
+            _update_task_runtime_fields(task_id, {
+                Key.LastRunResult: result_text,
+                Key.CostTime: elapsed_sec,
+            })
 
     try:
         if email:

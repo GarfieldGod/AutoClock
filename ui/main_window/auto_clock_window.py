@@ -1,14 +1,16 @@
 import os
 import re
+import subprocess
+import webbrowser
 from pathlib import Path
 
-from PyQt5.QtCore import QSize, QTimer, QThread, pyqtSignal
-from PyQt5.QtWidgets import QDialog
+from PyQt5.QtCore import QSize, QTimer, QThread, pyqtSignal, Qt
+from PyQt5.QtWidgets import QDialog, QMessageBox, QProgressDialog, QApplication
 
 from src.utils.const import AppPath, Key
 from src.utils.utils import Utils
 from src.utils.log import Log
-from src.utils.update import VersionCheckThread
+from src.utils.update import VersionCheckThread, AppUpdateInstallThread
 from ui.template.ui_main_window import MainWindow
 from ui.template.ui_page import Container, PageContent
 from src.extend.ssh_client import SshClient, SshConfig
@@ -34,20 +36,22 @@ class AutoClockWindow(MainWindow):
         self._settings = SettingsStore()
         self._settings.load()
         self._update_threads = []
+        self._update_install_thread: AppUpdateInstallThread | None = None
+        self._update_progress_dialog: QProgressDialog | None = None
 
         self._local_data_root = AppPath.DataRoot
         self._local_data_json = AppPath.DataJson
         self._local_tasks_json = AppPath.TasksJson
         self._local_runner_result_json = AppPath.RunnerResultJson
 
-        self.load_data_json()
-        self._check_update_on_startup()
-
         self._remote_connected = False
         self._remote_host = None
         self._remote_home_dir = None
         self._remote_data_root_abs = None
         self._remote_ssh_cfg: SshConfig | None = None
+
+        self.load_data_json()
+        self._check_update_on_startup()
 
         self._remote_plan_service: RemotePlanService | None = None
 
@@ -66,8 +70,8 @@ class AutoClockWindow(MainWindow):
 
     def _check_update_on_startup(self):
         try:
-            pref = self.get_save_data(Key.CheckUpdateOnStartup, "每次启动都检查")
-            if pref != "每次启动都检查":
+            pref = self.get_save_data(Key.CheckUpdateOnStartup, "on_startup")
+            if pref != "on_startup":
                 return
             self.check_app_update(manual=False)
         except Exception:
@@ -84,29 +88,148 @@ class AutoClockWindow(MainWindow):
         except Exception as e:
             if manual:
                 from src.ui.ui_message import MessageBox
-                MessageBox(f"检查更新失败：{e}")
+                MessageBox(f"Check update failed: {e}")
 
     def _on_update_check_done(self, ok, ver, manual: bool = False):
         try:
             if ok and ver and ver.get("local") and ver.get("remote"):
-                from src.ui.ui_message import MessageBox
-                import webbrowser
-                from src.utils.const import WebPath
-                is_update = MessageBox(
-                    f"检测到新版本:\n\n"
-                    f"本地: {ver.get('local')}  最新: {ver.get('remote')}\n\n"
-                    f"是否前往下载？",
-                    need_check=True, message_only=False)
-                if is_update.exec_() == QDialog.Accepted:
-                    webbrowser.open_new(WebPath.AppProjectPath)
+                self._show_update_actions(ver)
             elif manual and ver and ver.get("local") and ver.get("remote"):
                 from src.ui.ui_message import MessageBox
-                MessageBox(f"当前已经是最新版本：{ver.get('local')}")
+                MessageBox(f"You are on the latest version: {ver.get('local')}")
             elif manual:
                 from src.ui.ui_message import MessageBox
-                MessageBox("版本检测失败，无法获取版本信息")
+                MessageBox("Version check failed, unable to retrieve version info.")
         except Exception:
             pass
+
+    @staticmethod
+    def _release_page(version: str) -> str:
+        from src.utils.const import WebPath
+        return WebPath.AppReleasePageTemplate.format(version=str(version or "").strip())
+
+    @staticmethod
+    def _manual_download_url(version: str) -> str:
+        from src.utils.const import WebPath
+        version = str(version or "").strip()
+        if os.name == "nt":
+            return WebPath.AppWindowsDownloadUrlTemplate.format(version=version)
+        return WebPath.AppLinuxDownloadUrlTemplate.format(version=version)
+
+    def _show_update_actions(self, ver: dict):
+        local_ver = str(ver.get("local") or "")
+        remote_ver = str(ver.get("remote") or "")
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Information)
+        box.setWindowTitle("Update Available")
+        box.setText(
+            f"A new version is available\n\n"
+            f"Current: {local_ver}\n"
+            f"Latest: {remote_ver}\n\n"
+            f"Please choose an update option:"
+        )
+        box.setStyleSheet(
+            "QMessageBox { background-color: #ffffff; }"
+            "QLabel { color: #374151; font-size: 13px; }"
+            "QPushButton {"
+            "  padding: 4px 10px;"
+            "  border-radius: 4px;"
+            "  background-color: #f8fafc;"
+            "  color: #2563eb;"
+            "  border: 1px solid #cbd5e1;"
+            "  font-weight: 600;"
+            "  min-width: 60px;"
+            "  font-size: 12px;"
+            "}"
+            "QPushButton:hover { background-color: #eff6ff; border: 1px solid #3b82f6; }"
+            "QPushButton:pressed { background-color: #dbeafe; }"
+        )
+
+        btn_manual = box.addButton("Manual", QMessageBox.ActionRole)
+        btn_auto = box.addButton("Auto", QMessageBox.AcceptRole)
+        btn_cancel = box.addButton("Cancel", QMessageBox.RejectRole)
+        box.setDefaultButton(btn_auto)
+        box.exec_()
+
+        clicked = box.clickedButton()
+        if clicked == btn_manual:
+            webbrowser.open_new(self._manual_download_url(remote_ver))
+            return
+        if clicked == btn_auto:
+            self._run_auto_update_install(remote_ver)
+            return
+        if clicked == btn_cancel:
+            return
+
+    def _run_auto_update_install(self, remote_ver: str):
+        remote_ver = str(remote_ver or "").strip()
+        if not remote_ver:
+            from src.ui.ui_message import MessageBox
+            MessageBox("Version number is empty, cannot auto-update.")
+            return
+
+        if self._update_install_thread is not None and self._update_install_thread.isRunning():
+            from src.ui.ui_message import MessageBox
+            MessageBox("An update task is already in progress.")
+            return
+
+        dialog = QProgressDialog("Preparing to download update package...", "", 0, 100, self)
+        dialog.setWindowTitle("Auto Update")
+        dialog.setWindowModality(Qt.ApplicationModal)
+        dialog.setCancelButton(None)
+        dialog.setMinimumDuration(0)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.setValue(0)
+        dialog.show()
+        self._update_progress_dialog = dialog
+
+        thread = AppUpdateInstallThread(remote_ver)
+        self._update_install_thread = thread
+
+        def _on_progress(percent: int, message: str):
+            if self._update_progress_dialog is None:
+                return
+            self._update_progress_dialog.setLabelText(message or "Updating...")
+            self._update_progress_dialog.setValue(max(0, min(100, int(percent))))
+
+        def _on_finished(ok: bool, message: str, launch_path: str):
+            if self._update_progress_dialog is not None:
+                self._update_progress_dialog.setValue(100)
+                self._update_progress_dialog.hide()
+                self._update_progress_dialog.deleteLater()
+                self._update_progress_dialog = None
+
+            self._update_install_thread = None
+
+            if not ok:
+                from src.ui.ui_message import MessageBox
+                MessageBox(f"Auto-update failed: {message}")
+                return
+
+            result = QMessageBox.question(
+                self,
+                "Update Complete",
+                f"{message}\n\nLaunch the new version and exit current program?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if result == QMessageBox.Yes:
+                try:
+                    launch = Path(str(launch_path or "").strip())
+                    if launch.exists():
+                        subprocess.Popen([str(launch)], cwd=str(launch.parent))
+                    else:
+                        webbrowser.open_new(self._release_page(remote_ver))
+                except Exception:
+                    webbrowser.open_new(self._release_page(remote_ver))
+                QApplication.quit()
+
+        thread.progress_changed.connect(_on_progress)
+        thread.install_finished.connect(_on_finished)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
 
     def refresh_ssh_status(self):
         enabled = _truthy(self.get_save_data(Key.SshEnabled, False))
@@ -182,7 +305,10 @@ class AutoClockWindow(MainWindow):
             self._remote_ssh_cfg = cfg
             self._data_store = store
 
-            self._remote_plan_service = RemotePlanService(lambda: self._remote_ssh_cfg)
+            self._remote_plan_service = RemotePlanService(
+                lambda: self._remote_ssh_cfg,
+                lambda: AppPath.RemoteAppRoot,
+            )
             self.load_data_json()
             self._reload_pages()
             self.refresh_ssh_status()
@@ -313,6 +439,11 @@ class AutoClockWindow(MainWindow):
                             data.pop(k, None)
                         except Exception:
                             pass
+                for k in self._local_settings_keys():
+                    try:
+                        data.pop(k, None)
+                    except Exception:
+                        pass
                 self.save_data.update(data)
         except Exception as e:
             print(e)
@@ -329,6 +460,12 @@ class AutoClockWindow(MainWindow):
             Key.SshServerPlatform,
             Key.SshRemoteAppRoot,
         }
+
+    @staticmethod
+    def _local_settings_keys() -> set[str]:
+        keys = set(AutoClockWindow._ssh_keys())
+        keys.add(Key.CheckUpdateOnStartup)
+        return keys
 
     def write_data_json(self):
         print("write_data_json")
@@ -349,6 +486,8 @@ class AutoClockWindow(MainWindow):
             merged.update(file_data)
             if isinstance(self.save_data, dict):
                 merged.update(self.save_data)
+            for k in self._local_settings_keys():
+                merged.pop(k, None)
             if self.is_remote_connected():
                 for k in self._ssh_keys():
                     merged.pop(k, None)
@@ -381,7 +520,7 @@ class AutoClockWindow(MainWindow):
 
     def get_save_data(self, key, default=None):
         try:
-            if key in self._ssh_keys():
+            if key in self._local_settings_keys():
                 return self._settings.get(key, default)
             if not isinstance(self.save_data, dict):
                 return default
@@ -396,7 +535,7 @@ class AutoClockWindow(MainWindow):
 
     def set_save_data(self, key, value):
         try:
-            if key in self._ssh_keys():
+            if key in self._local_settings_keys():
                 self._settings.set(key, value)
             else:
                 self.save_data[key] = value

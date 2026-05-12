@@ -53,7 +53,9 @@ def _disconnect_network_impl():
         disabled_interfaces = []
         
         # 使用更健壮的解析方式
-        lines = result.stdout.strip().split('\n')
+        stdout_text = (result.stdout or "")
+        lines = stdout_text.strip().split('\n') if stdout_text else []
+        
         for line in lines:
             line = line.strip()
             # 匹配已启用的接口行
@@ -158,7 +160,9 @@ def _connect_network_impl():
         
         enabled_interfaces = []
         
-        lines = result.stdout.strip().split('\n')
+        stdout_text = (result.stdout or "")
+        lines = stdout_text.strip().split('\n') if stdout_text else []
+        
         for line in lines:
             line = line.strip()
             # 匹配已禁用的接口行

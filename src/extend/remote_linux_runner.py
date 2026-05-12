@@ -47,6 +47,10 @@ class RemoteLinuxRunner:
         code, _, _ = self._ssh.exec(f"test -x {self._layout.runner_path_version(version)}")
         return code == 0
 
+    def current_runner_exists(self) -> bool:
+        code, _, _ = self._ssh.exec(f"test -x {self._layout.runner_path_current}")
+        return code == 0
+
     def ensure_installed_from_url(self, version: str, url: str) -> Tuple[bool, str | None]:
         if self.remote_has_version(version):
             return True, None

@@ -92,5 +92,5 @@ def run_clock(is_test=False, show_web_page_override=None):
         else:
             # run_test()
             return True, None
-    except Exception as e:
+    except BaseException as e:
         return False, str(e)

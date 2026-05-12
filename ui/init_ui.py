@@ -1,7 +1,8 @@
 import os.path
 import sys
 
-from PyQt5.QtCore import QSize
+from PyQt5.QtCore import QSize, QTimer
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 
 from src.utils.const import AppPath
@@ -48,11 +49,27 @@ def init_page_list(w):
     con_settings = ToolSettingsPage(6, 6)
     w.add_page(nav_settings, con_settings)
 
-def init_ui():
+def init_ui(startup_hook=None):
     app = QApplication(sys.argv)
+    try:
+        icon_path = os.path.join(AppPath.UiResourcePath, "image", "app_icon.png")
+        if os.path.exists(icon_path):
+            app.setWindowIcon(QIcon(icon_path))
+    except Exception:
+        pass
     window = AutoClockWindow()
     init_page_list(window)
     window.show()
+
+    if callable(startup_hook):
+        def _run_hook():
+            try:
+                startup_hook(window, app)
+            except Exception:
+                pass
+
+        QTimer.singleShot(0, _run_hook)
+
     sys.exit(app.exec_())
 
 if __name__ == "__main__":

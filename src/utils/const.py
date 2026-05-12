@@ -21,6 +21,8 @@ class Key:
     ExecuteTime: str = "execute_time"
     ExecuteDay: str = "execute_day"
     ExecuteDays: str = "execute_days"
+    Enabled: str = "enabled"
+    LastRunResult: str = "last_run_result"
 
     Year: str = "year"
     Month: str = "month"
@@ -144,6 +146,9 @@ class WebPath:
     AppConfigPathGitee: str = "https://gitee.com/garfieldgod/auto-clock/raw/master/config.json"
     AppConfigPathGitHub: str = "https://github.com/GarfieldGod/auto-clock/raw/master/config.json"
     AppProjectPath: str = "https://github.com/GarfieldGod/auto-clock"
+    AppReleasePageTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/tag/v{version}"
+    AppWindowsDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-{version}-windows.zip"
+    AppLinuxDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-{version}-linux.tar.gz"
     NeusoftKQPath: str = "https://kq.neusoft.com/"
     NeusoftKQLoginPath: str = "https://kq.neusoft.com/login"
     LinuxRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/linux-runner-{version}.tar.gz"
