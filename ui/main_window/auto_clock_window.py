@@ -7,7 +7,9 @@ import webbrowser
 from pathlib import Path
 
 from PyQt5.QtCore import QSize, QTimer, QThread, pyqtSignal, Qt
-from PyQt5.QtWidgets import QDialog, QMessageBox, QProgressDialog, QApplication
+from PyQt5.QtGui import QFont
+from PyQt5.QtWidgets import (QDialog, QHBoxLayout, QLabel, QMessageBox,
+                             QProgressDialog, QPushButton, QVBoxLayout, QApplication)
 
 from src.utils.const import AppPath, Key
 from src.utils.utils import Utils
@@ -41,6 +43,7 @@ class AutoClockWindow(MainWindow):
         self._update_install_thread: AppUpdateInstallThread | None = None
         self._update_progress_dialog: QProgressDialog | None = None
         self._update_cancelled = False
+        self._pending_update_bat: Path | None = None
 
         self._local_data_root = AppPath.DataRoot
         self._local_data_json = AppPath.DataJson
@@ -71,6 +74,23 @@ class AutoClockWindow(MainWindow):
 
         self.refresh_ssh_status()
 
+    def closeEvent(self, event):
+        if self._pending_update_bat is not None and self._pending_update_bat.exists():
+            if sys.platform == "win32":
+                subprocess.Popen(
+                    [str(self._pending_update_bat)],
+                    shell=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+            else:
+                subprocess.Popen(
+                    [str(self._pending_update_bat)],
+                    shell=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+        event.accept()
+
     def _check_update_on_startup(self):
         try:
             pref = self.get_save_data(Key.CheckUpdateOnStartup, "on_startup")
@@ -81,6 +101,8 @@ class AutoClockWindow(MainWindow):
             pass
 
     def check_app_update(self, manual: bool = True):
+        if self._update_threads:
+            return
         try:
             thread = VersionCheckThread()
             self._update_threads.append(thread)
@@ -123,47 +145,100 @@ class AutoClockWindow(MainWindow):
         local_ver = str(ver.get("local") or "")
         remote_ver = str(ver.get("remote") or "")
 
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Information)
-        box.setWindowTitle("Update Available")
-        box.setText(
-            f"A new version is available\n\n"
-            f"Current: {local_ver}\n"
-            f"Latest: {remote_ver}\n\n"
-            f"Please choose an update option:"
-        )
-        box.setStyleSheet(
-            "QMessageBox { background-color: #ffffff; }"
-            "QLabel { color: #374151; font-size: 13px; }"
-            "QPushButton {"
-            "  padding: 4px 10px;"
-            "  border-radius: 4px;"
-            "  background-color: #f8fafc;"
-            "  color: #2563eb;"
-            "  border: 1px solid #cbd5e1;"
-            "  font-weight: 600;"
-            "  min-width: 60px;"
-            "  font-size: 12px;"
-            "}"
-            "QPushButton:hover { background-color: #eff6ff; border: 1px solid #3b82f6; }"
-            "QPushButton:pressed { background-color: #dbeafe; }"
-        )
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Update Available")
+        dialog.setFixedSize(400, 200)
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        dialog.setStyleSheet("QDialog { background-color: #ffffff; }")
 
-        btn_manual = box.addButton("Manual", QMessageBox.ActionRole)
-        btn_auto = box.addButton("Auto", QMessageBox.AcceptRole)
-        btn_cancel = box.addButton("Cancel", QMessageBox.RejectRole)
-        box.setDefaultButton(btn_auto)
-        box.exec_()
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(28, 22, 28, 18)
+        layout.setSpacing(0)
 
-        clicked = box.clickedButton()
-        if clicked == btn_manual:
-            webbrowser.open_new(self._manual_download_url(remote_ver))
-            return
-        if clicked == btn_auto:
+        icon_label = QLabel("\u2b06")
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setStyleSheet("font-size: 30px;")
+        layout.addWidget(icon_label)
+        layout.addSpacing(8)
+
+        subtitle = QLabel("A new version is available")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setStyleSheet(
+            "font-family: 'Microsoft YaHei', 'SimHei', sans-serif;"
+            "font-size: 14px; font-weight: bold; color: #1a1a1a;"
+        )
+        layout.addWidget(subtitle)
+        layout.addSpacing(6)
+
+        info = QLabel(
+            f"Current:  {local_ver}\n"
+            f"Latest:   {remote_ver}"
+        )
+        info.setAlignment(Qt.AlignCenter)
+        info.setStyleSheet(
+            "font-family: 'Microsoft YaHei', 'SimHei', sans-serif;"
+            "font-size: 12px; color: #6b7280;"
+        )
+        layout.addWidget(info)
+        layout.addSpacing(16)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+        btn_row.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setFixedSize(90, 34)
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background: #ffffff; color: #6b7280;
+                border: 1px solid #d1d5db; border-radius: 6px;
+                font-size: 12px; font-weight: 600;
+            }
+            QPushButton:hover { background: #f3f4f6; color: #374151; }
+            QPushButton:pressed { background: #e5e7eb; }
+        """)
+
+        manual_btn = QPushButton("Manual")
+        manual_btn.setFixedSize(90, 34)
+        manual_btn.setStyleSheet("""
+            QPushButton {
+                background: #ffffff; color: #2563eb;
+                border: 1px solid #2563eb; border-radius: 6px;
+                font-size: 12px; font-weight: 600;
+            }
+            QPushButton:hover { background: #eff6ff; }
+            QPushButton:pressed { background: #dbeafe; }
+        """)
+
+        auto_btn = QPushButton("Auto")
+        auto_btn.setFixedSize(90, 34)
+        auto_btn.setStyleSheet("""
+            QPushButton {
+                background: #2563eb; color: white;
+                border: none; border-radius: 6px;
+                font-size: 12px; font-weight: 600;
+            }
+            QPushButton:hover { background: #1d4ed8; }
+            QPushButton:pressed { background: #1e40af; }
+        """)
+
+        auto_btn.clicked.connect(dialog.accept)
+        manual_btn.clicked.connect(lambda: dialog.done(2))
+        cancel_btn.clicked.connect(dialog.reject)
+
+        btn_row.addWidget(auto_btn)
+        btn_row.addWidget(manual_btn)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        result = dialog.exec_()
+        dialog.deleteLater()
+
+        if result == QDialog.Accepted:
             self._run_auto_update_install(remote_ver)
-            return
-        if clicked == btn_cancel:
-            return
+        elif result == 2:
+            webbrowser.open_new(self._manual_download_url(remote_ver))
 
     def _run_auto_update_install(self, remote_ver: str):
         remote_ver = str(remote_ver or "").strip()
@@ -240,67 +315,136 @@ class AutoClockWindow(MainWindow):
                 MessageBox(f"Auto-update failed: {message}")
                 return
 
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle("Update Complete")
-            msg_box.setText("A new version has been downloaded.<br>Restart now to apply the update?")
-            msg_box.setIcon(QMessageBox.Question)
-            restart_btn = msg_box.addButton("Restart Now", QMessageBox.AcceptRole)
-            later_btn = msg_box.addButton("Later", QMessageBox.RejectRole)
-            msg_box.setDefaultButton(restart_btn)
-            msg_box.exec_()
-            if msg_box.clickedButton() == restart_btn:
-                try:
-                    launch = Path(str(launch_path or "").strip())
-                    if launch.exists():
-                        new_dir = launch.parent
-                        app_dir = Path(sys.executable).resolve().parent
-                        updater_dir = Path(AppPath.UpdaterRoot)
-                        updater_dir.mkdir(parents=True, exist_ok=True)
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Update Complete")
+            dialog.setFixedSize(380, 170)
+            dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            dialog.setStyleSheet("QDialog { background-color: #ffffff; }")
 
-                        if sys.platform == "win32":
-                            bat_path = updater_dir / "_replace.bat"
-                            bat_content = (
-                                f'@echo off\n'
-                                f'timeout /t 3 /nobreak >nul\n'
-                                f'robocopy "{new_dir}" "{app_dir}" /E /MOVE >nul 2>&1\n'
-                                f'if exist "{new_dir}" rmdir /S /Q "{new_dir}"\n'
-                                f'start "" "{app_dir / launch.name}"\n'
-                                f'del "%~f0"\n'
-                            )
-                            bat_path.write_text(bat_content, encoding="utf-8")
-                            startupinfo = subprocess.STARTUPINFO()
-                            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                            startupinfo.wShowWindow = subprocess.SW_HIDE
-                            subprocess.Popen(
-                                [str(bat_path)],
-                                shell=True,
-                                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-                                startupinfo=startupinfo,
-                            )
-                        else:
-                            sh_path = updater_dir / "_replace.sh"
-                            sh_content = (
-                                f'#!/bin/bash\n'
-                                f'sleep 3\n'
-                                f'cp -a "{new_dir}/." "{app_dir}/"\n'
-                                f'rm -rf "{new_dir}"\n'
-                                f'nohup "{app_dir / launch.name}" > /dev/null 2>&1 &\n'
-                                f'rm -f "$0"\n'
-                            )
-                            sh_path.write_text(sh_content, encoding="utf-8")
-                            os.chmod(str(sh_path), 0o755)
-                            subprocess.Popen(
-                                [str(sh_path)],
-                                shell=True,
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL,
-                            )
+            layout = QVBoxLayout(dialog)
+            layout.setContentsMargins(28, 22, 28, 18)
+            layout.setSpacing(0)
+
+            check = QLabel("\u2713")
+            check.setAlignment(Qt.AlignCenter)
+            check.setStyleSheet("font-size: 34px; color: #22c55e; font-weight: bold;")
+            layout.addWidget(check)
+            layout.addSpacing(8)
+
+            text = QLabel(
+                "A new version has been downloaded.\n"
+                "Restart now to apply the update?"
+            )
+            text.setAlignment(Qt.AlignCenter)
+            text.setStyleSheet(
+                "font-family: 'Microsoft YaHei', 'SimHei', sans-serif;"
+                "font-size: 13px; color: #4b5563;"
+            )
+            layout.addWidget(text)
+            layout.addSpacing(18)
+
+            btn_row = QHBoxLayout()
+            btn_row.setSpacing(10)
+            btn_row.addStretch()
+
+            later_btn = QPushButton("Later")
+            later_btn.setFixedSize(100, 36)
+            later_btn.setStyleSheet("""
+                QPushButton {
+                    background: #ffffff; color: #374151;
+                    border: 1px solid #d1d5db; border-radius: 6px;
+                    font-size: 13px; font-weight: 600;
+                }
+                QPushButton:hover { background: #f3f4f6; border-color: #9ca3af; }
+                QPushButton:pressed { background: #e5e7eb; }
+            """)
+
+            restart_btn = QPushButton("Restart Now")
+            restart_btn.setFixedSize(120, 36)
+            restart_btn.setStyleSheet("""
+                QPushButton {
+                    background: #2563eb; color: white;
+                    border: none; border-radius: 6px;
+                    font-size: 13px; font-weight: 600;
+                }
+                QPushButton:hover { background: #1d4ed8; }
+                QPushButton:pressed { background: #1e40af; }
+            """)
+
+            restart_btn.clicked.connect(dialog.accept)
+            later_btn.clicked.connect(dialog.reject)
+
+            btn_row.addWidget(restart_btn)
+            btn_row.addWidget(later_btn)
+            btn_row.addStretch()
+            layout.addLayout(btn_row)
+
+            result = dialog.exec_()
+            dialog.deleteLater()
+
+            def _write_bat(app_dir, new_dir, launch, include_start):
+                updater_dir = Path(AppPath.UpdaterRoot)
+                updater_dir.mkdir(parents=True, exist_ok=True)
+                if sys.platform == "win32":
+                    name = "_replace.bat" if include_start else "_apply_update.bat"
+                    bat_path = updater_dir / name
+                    lines = [
+                        '@echo off\n',
+                        'timeout /t 3 /nobreak >nul\n',
+                        f'robocopy "{new_dir}" "{app_dir}" /E /MOVE >nul 2>&1\n',
+                        f'if exist "{new_dir}" rmdir /S /Q "{new_dir}"\n',
+                    ]
+                    if include_start:
+                        lines.append(f'start "" "{app_dir / launch.name}"\n')
+                    lines.append('del "%~f0"\n')
+                    bat_path.write_text("".join(lines), encoding="utf-8")
+                    return bat_path
+                else:
+                    name = "_replace.sh" if include_start else "_apply_update.sh"
+                    sh_path = updater_dir / name
+                    lines = [
+                        '#!/bin/bash\n',
+                        'sleep 3\n',
+                        f'cp -a "{new_dir}/." "{app_dir}/"\n',
+                        f'rm -rf "{new_dir}"\n',
+                    ]
+                    if include_start:
+                        lines.append(f'nohup "{app_dir / launch.name}" > /dev/null 2>&1 &\n')
+                    lines.append('rm -f "$0"\n')
+                    sh_path.write_text("".join(lines), encoding="utf-8")
+                    os.chmod(str(sh_path), 0o755)
+                    return sh_path
+
+            try:
+                launch = Path(str(launch_path or "").strip())
+                if launch.exists():
+                    new_dir = launch.parent
+                    app_dir = Path(sys.executable).resolve().parent
+
+                    if result == QDialog.Accepted:
+                        bat = _write_bat(app_dir, new_dir, launch, include_start=True)
+                        subprocess.Popen(
+                            [str(bat)],
+                            shell=True,
+                            creationflags=subprocess.CREATE_NO_WINDOW,
+                        ) if sys.platform == "win32" else subprocess.Popen(
+                            [str(bat)],
+                            shell=True,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
                         QApplication.quit()
                     else:
+                        bat = _write_bat(app_dir, new_dir, launch, include_start=False)
+                        self._pending_update_bat = bat
+                else:
+                    if result == QDialog.Accepted:
                         webbrowser.open_new(self._release_page(remote_ver))
-                except Exception:
+                        QApplication.quit()
+            except Exception:
+                if result == QDialog.Accepted:
                     webbrowser.open_new(self._release_page(remote_ver))
-                QApplication.quit()
+                    QApplication.quit()
 
         thread.progress_changed.connect(_on_progress)
         thread.install_finished.connect(_on_finished)
