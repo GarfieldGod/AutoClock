@@ -484,80 +484,95 @@ class AutoClockWindow(MainWindow):
         if use_pkey and not _is_non_empty(pkey_path):
             return False, "启用私钥但未选择私钥文件"
 
-        try:
-            cfg = SshConfig(
-                host=host,
-                username=username,
-                password=None if use_pkey else password,
-                pkey_path=pkey_path if use_pkey else None,
-                timeout_sec=10,
-            )
-            remote_app_root_override = _safe_str(self.get_save_data(Key.SshRemoteAppRoot, "")).strip()
-            store = RemoteDataStore(
-                ssh_cfg=cfg,
-                host=host,
-                local_data_root=self._local_data_root,
-                remote_app_root_override=remote_app_root_override,
-            )
-            ok2, err2 = store.bootstrap()
-            if not ok2:
-                return False, err2
-            if not store.cache_data_root:
-                return False, "远端缓存目录初始化失败"
-            if not store.remote_app_root_abs or not store.remote_data_root_abs:
-                return False, "远端目录初始化失败"
+        cfg = SshConfig(
+            host=host,
+            username=username,
+            password=None if use_pkey else password,
+            pkey_path=pkey_path if use_pkey else None,
+            timeout_sec=10,
+        )
+        remote_app_root_override = _safe_str(self.get_save_data(Key.SshRemoteAppRoot, "")).strip()
 
-            AppPath.DataRoot = str(store.cache_data_root)
-            AppPath.DataJson = str(Path(store.cache_data_root) / "data.json")
-            AppPath.TasksJson = str(Path(store.cache_data_root) / "tasks.json")
-            AppPath.RunnerResultJson = str(Path(store.cache_data_root) / "runner_result.json")
+        dialog = QProgressDialog("Connecting to remote server...", None, 0, 100, self)
+        dialog.setWindowTitle("SSH Connection")
+        dialog.setWindowModality(Qt.ApplicationModal)
+        dialog.setCancelButton(None)
+        dialog.setMinimumDuration(0)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.setValue(0)
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        dialog.setFixedSize(dialog.width() + 120, dialog.height())
+        dialog.show()
 
-            AppPath.update_remote(store.remote_app_root_abs)
+        thread = RemoteConnectSetupThread(cfg, host, self._local_data_root, remote_app_root_override)
 
-            self._remote_connected = True
-            self._remote_host = host
-            self._remote_home_dir = store.remote_home_dir
-            self._remote_data_root_abs = store.remote_data_root_abs
-            self._remote_ssh_cfg = cfg
-            self._data_store = store
+        state = {"ok": False, "error": ""}
+        wait_loop = QEventLoop()
 
-            self._remote_plan_service = RemotePlanService(
-                lambda: self._remote_ssh_cfg,
-                lambda: AppPath.RemoteAppRoot,
-            )
-            self.load_data_json()
-            self._reload_pages()
-            self.refresh_ssh_status()
+        def _on_progress(percent: int, message: str):
+            dialog.setLabelText(message)
+            dialog.setValue(max(0, min(100, int(percent))))
 
-            runner_ok, runner_err = self.ensure_remote_runner_with_dialog()
-            if not runner_ok:
-                self._remote_connected = False
-                self._remote_host = None
-                self._remote_home_dir = None
-                self._remote_data_root_abs = None
-                self._remote_ssh_cfg = None
-                self._remote_plan_service = None
-                self._data_store = LocalDataStore()
-                AppPath.clear_remote()
-                AppPath.DataRoot = self._local_data_root
-                AppPath.DataJson = self._local_data_json
-                AppPath.TasksJson = self._local_tasks_json
-                AppPath.RunnerResultJson = self._local_runner_result_json
-                self.load_data_json()
-                self._reload_pages()
-                self.refresh_ssh_status()
-                return False, f"远端 runner 安装失败: {runner_err}"
+        def _on_finished(ok: bool, msg: str):
+            state["ok"] = ok
+            state["error"] = msg
+            wait_loop.quit()
 
-            return True, None
-        except Exception as e:
-            self._remote_connected = False
-            self._remote_host = None
-            self._remote_home_dir = None
-            self._remote_data_root_abs = None
-            self._remote_ssh_cfg = None
-            self._remote_plan_service = None
-            self.refresh_ssh_status()
-            return False, str(e)
+        thread.progress_changed.connect(_on_progress)
+        thread.finished.connect(_on_finished)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+        wait_loop.exec_()
+
+        dialog.hide()
+        dialog.deleteLater()
+
+        if not state["ok"]:
+            self._cleanup_remote_state()
+            return False, state["error"]
+
+        store = thread.store
+        AppPath.DataRoot = str(store.cache_data_root)
+        AppPath.DataJson = str(Path(store.cache_data_root) / "data.json")
+        AppPath.TasksJson = str(Path(store.cache_data_root) / "tasks.json")
+        AppPath.RunnerResultJson = str(Path(store.cache_data_root) / "runner_result.json")
+
+        AppPath.update_remote(store.remote_app_root_abs)
+
+        self._remote_connected = True
+        self._remote_host = host
+        self._remote_home_dir = store.remote_home_dir
+        self._remote_data_root_abs = store.remote_data_root_abs
+        self._remote_ssh_cfg = cfg
+        self._data_store = store
+
+        self._remote_plan_service = RemotePlanService(
+            lambda: self._remote_ssh_cfg,
+            lambda: AppPath.RemoteAppRoot,
+        )
+        self.load_data_json()
+        self._reload_pages()
+        self.refresh_ssh_status()
+
+        return True, None
+
+    def _cleanup_remote_state(self):
+        self._remote_connected = False
+        self._remote_host = None
+        self._remote_home_dir = None
+        self._remote_data_root_abs = None
+        self._remote_ssh_cfg = None
+        self._remote_plan_service = None
+        self._data_store = LocalDataStore()
+        AppPath.clear_remote()
+        AppPath.DataRoot = self._local_data_root
+        AppPath.DataJson = self._local_data_json
+        AppPath.TasksJson = self._local_tasks_json
+        AppPath.RunnerResultJson = self._local_runner_result_json
+        self.load_data_json()
+        self._reload_pages()
+        self.refresh_ssh_status()
 
     def disconnect_remote_and_reload(self):
         self._remote_connected = False
@@ -638,58 +653,6 @@ class AutoClockWindow(MainWindow):
             return True, remote_driver_path
         except Exception as e:
             return False, str(e)
-
-    def ensure_remote_runner_with_dialog(self) -> tuple[bool, str | None]:
-        if not self.is_remote_connected():
-            return False, "SSH not connected"
-        if not self._remote_ssh_cfg:
-            return False, "SSH config missing"
-        if not AppPath.RemoteAppRoot:
-            return False, "Remote AppRoot not initialized"
-
-        version = Utils.get_app_version_from_config_json(default="")
-        if not version:
-            return False, "Cannot get version number"
-
-        dialog = QProgressDialog("Checking remote runner...", None, 0, 100, self)
-        dialog.setWindowTitle("Remote Runner Setup")
-        dialog.setWindowModality(Qt.ApplicationModal)
-        dialog.setCancelButton(None)
-        dialog.setMinimumDuration(0)
-        dialog.setAutoClose(False)
-        dialog.setAutoReset(False)
-        dialog.setValue(0)
-        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-        dialog.show()
-
-        thread = RemoteRunnerInstallThread(self._remote_ssh_cfg, AppPath.RemoteAppRoot, version)
-
-        state = {"ok": False, "error": ""}
-        wait_loop = QEventLoop()
-
-        def _on_progress(percent: int, message: str):
-            dialog.setLabelText(message or "Installing remote runner...")
-            dialog.setValue(max(0, min(100, int(percent))))
-
-        def _on_finished(ok: bool, message: str):
-            state["ok"] = bool(ok)
-            state["error"] = str(message or "")
-            wait_loop.quit()
-
-        thread.progress_changed.connect(_on_progress)
-        thread.install_finished.connect(_on_finished)
-        thread.finished.connect(thread.deleteLater)
-
-        thread.start()
-        wait_loop.exec_()
-
-        dialog.setValue(100)
-        dialog.hide()
-        dialog.deleteLater()
-
-        if state["ok"]:
-            return True, None
-        return False, state["error"]
 
     def _reload_pages(self):
         try:
@@ -869,46 +832,71 @@ class _SshProbeThread(QThread):
         self.result.emit(ok)
 
 
-class RemoteRunnerInstallThread(QThread):
+class RemoteConnectSetupThread(QThread):
     progress_changed = pyqtSignal(int, str)
-    install_finished = pyqtSignal(bool, str)
+    finished = pyqtSignal(bool, str)
 
-    def __init__(self, ssh_cfg: SshConfig, remote_app_root: str, version: str):
+    def __init__(self, ssh_cfg: SshConfig, host: str, local_data_root: str, remote_app_root_override: str):
         super().__init__()
         self._ssh_cfg = ssh_cfg
-        self._remote_app_root = remote_app_root
-        self._version = version
+        self._host = host
+        self._local_data_root = local_data_root
+        self._remote_app_root_override = remote_app_root_override
+        self.store: RemoteDataStore | None = None
 
     def run(self):
         try:
-            url = WebPath.LinuxRunnerDownloadUrlTemplate.format(version=self._version)
-            with SshClient(self._ssh_cfg) as ssh:
-                layout = RemoteLinuxLayout(app_root=self._remote_app_root)
-                remote = RemoteLinuxRunner(ssh, layout=layout)
+            self.progress_changed.emit(5, "Connecting to remote server...")
 
-                if remote.remote_has_version(self._version):
-                    self.progress_changed.emit(80, "Runner already downloaded, setting current...")
-                else:
-                    self.progress_changed.emit(5, "Preparing to download runner...")
+            store = RemoteDataStore(
+                ssh_cfg=self._ssh_cfg,
+                host=self._host,
+                local_data_root=self._local_data_root,
+                remote_app_root_override=self._remote_app_root_override,
+            )
+            ok, err = store.bootstrap()
+            if not ok:
+                self.finished.emit(False, err or "Bootstrap failed")
+                return
+            if not store.cache_data_root:
+                self.finished.emit(False, "远端缓存目录初始化失败")
+                return
+            if not store.remote_app_root_abs or not store.remote_data_root_abs:
+                self.finished.emit(False, "远端目录初始化失败")
+                return
 
-                    def _on_progress(percent: int):
-                        self.progress_changed.emit(max(5, min(80, percent)), f"Downloading runner... ({percent}%)")
+            self.store = store
 
-                    ok, err = remote.ensure_installed_from_url(self._version, url, progress_callback=_on_progress)
-                    if not ok:
-                        self.install_finished.emit(False, err or "Remote runner installation failed")
+            version = Utils.get_app_version_from_config_json(default="")
+            if version:
+                url = WebPath.LinuxRunnerDownloadUrlTemplate.format(version=version)
+                with SshClient(self._ssh_cfg) as ssh:
+                    layout = RemoteLinuxLayout(app_root=store.remote_app_root_abs)
+                    remote = RemoteLinuxRunner(ssh, layout=layout)
+
+                    if remote.remote_has_version(version):
+                        self.progress_changed.emit(80, "Runner already downloaded, setting current...")
+                    else:
+                        self.progress_changed.emit(30, "Downloading runner...")
+
+                        def _on_progress(pct: int):
+                            self.progress_changed.emit(max(30, min(80, pct)), f"Downloading runner... ({pct}%)")
+
+                        ok, err = remote.ensure_installed_from_url(version, url, progress_callback=_on_progress)
+                        if not ok:
+                            self.finished.emit(False, err or "Runner installation failed")
+                            return
+
+                    self.progress_changed.emit(95, "Setting current version...")
+                    code, _, err2 = remote.set_current(version)
+                    if code != 0:
+                        self.finished.emit(False, err2 or "Set current version failed")
                         return
 
-                self.progress_changed.emit(95, "Setting current version...")
-                code, _, err2 = remote.set_current(self._version)
-                if code != 0:
-                    self.install_finished.emit(False, err2 or "Set current version failed")
-                    return
-
-                self.progress_changed.emit(100, "Remote runner is ready")
-                self.install_finished.emit(True, "")
+            self.progress_changed.emit(100, "Connected")
+            self.finished.emit(True, "")
         except Exception as e:
-            self.install_finished.emit(False, str(e))
+            self.finished.emit(False, str(e))
 
 
 def _update_title_bar_status(window: AutoClockWindow, is_local: bool, ok: bool, host: str | None):
