@@ -229,6 +229,7 @@ def run_task_by_id(task_id: str, headless: bool = False):
                 send_email_failed=send_email_failed,
                 ok=ok,
                 error=error,
+                config_data=config_data,
             )
     except Exception as e:
         Log.error(f"Send email failed: {e}")
