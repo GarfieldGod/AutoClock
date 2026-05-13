@@ -62,10 +62,6 @@ class RemotePlanService:
         if self._ready_key == key and self._runner_current_exists(remote):
             return True, None
 
-        if self._runner_current_exists(remote):
-            self._ready_key = key
-            return True, None
-
         if remote.remote_has_version(version):
             code, out, err2 = remote.set_current(version)
             if code == 0 and self._runner_current_exists(remote):

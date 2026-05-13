@@ -1,9 +1,12 @@
 import json
 import posixpath
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Tuple
 
 from src.extend.ssh_client import SshClient
+from src.utils.download_helper import DownloadHelper
 
 
 @dataclass
@@ -51,38 +54,55 @@ class RemoteLinuxRunner:
         code, _, _ = self._ssh.exec(f"test -x {self._layout.runner_path_current}")
         return code == 0
 
-    def ensure_installed_from_url(self, version: str, url: str) -> Tuple[bool, str | None]:
+    def ensure_installed_from_url(self, version: str, url: str, progress_callback=None) -> Tuple[bool, str | None]:
         if self.remote_has_version(version):
             return True, None
 
         remote_dir = self.ensure_version_dir(version)
         runner_path = self._layout.runner_path_version(version)
 
+        tmp_path = Path(tempfile.mktemp(suffix=".tar.gz"))
+        try:
+            DownloadHelper.download_file(url=url, target=tmp_path, timeout=120, progress_callback=progress_callback)
+        except Exception as e:
+            return False, f"本地下载 runner 失败: {e}"
+
+        remote_tmp = f"/tmp/auto-clock-runner-{version}.tar.gz"
+        try:
+            self._ssh.upload_file(str(tmp_path), remote_tmp)
+        except Exception as e:
+            return False, f"上传 runner 到远端失败: {e}"
+        finally:
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
+
         script = (
             "set -e; "
             f"mkdir -p {remote_dir}; "
-            "tmp=\"$(mktemp)\"; "
-            "cleanup() { rm -f \"$tmp\"; }; trap cleanup EXIT; "
-            "if command -v curl >/dev/null 2>&1; then "
-            f"curl -fL --connect-timeout 10 --max-time 120 --retry 3 --retry-delay 1 -o \"$tmp\" '{url}'; "
-            "elif command -v wget >/dev/null 2>&1; then "
-            f"wget --timeout=120 --tries=3 -O \"$tmp\" '{url}'; "
-            "else echo 'curl/wget not found' 1>&2; exit 2; fi; "
-            "tar -tzf \"$tmp\" >/dev/null 2>&1 || (echo 'downloaded file is not a valid tar.gz' 1>&2; exit 3); "
-            f"tar -xzf \"$tmp\" -C {remote_dir}; "
+            f"tar -xzf {remote_tmp} -C {remote_dir}; "
+            f"rm -f {remote_tmp}; "
             f"chmod +x {runner_path}; "
             f"test -x {runner_path}"
         )
         code, out, err = self._ssh.exec(script)
         if code == 0:
             return True, None
-        msg = (err or out or "").strip() or f"install linux-runner failed with code {code}"
+        msg = (err or out or "").strip() or f"远端解压 runner 失败, code={code}"
         return False, msg
 
     def set_current(self, version: str) -> Tuple[int, str, str]:
-        runner = self._layout.runner_path_version(version)
-        cmd = f"{runner} set_current --version={version}"
-        return self._ssh.exec(cmd)
+        version_dir = self._layout.version_dir(version)
+        current_dir = self._layout.current_dir
+        runner_current = self._layout.runner_path_current
+        script = (
+            f"mkdir -p {current_dir} && "
+            f"ln -sfn {version_dir} {current_dir} && "
+            f"chmod +x {runner_current} && "
+            f"test -x {runner_current}"
+        )
+        return self._ssh.exec(script)
 
     def run_task(self, task_id: str, headless: bool = False) -> Tuple[int, str, str]:
         cmd = f"{self._layout.runner_path_current} --task_id={task_id}"
