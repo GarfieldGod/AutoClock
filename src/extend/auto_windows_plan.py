@@ -171,10 +171,6 @@ def is_task_invalid(task_name: str):
 def delete_scheduled_task(task_name: str):
     """删除计划任务"""
     try:
-        # 首先检查任务是否已经失效
-        if is_task_invalid(task_name):
-            return True, None
-
         Log.info(f"Delete plan: {task_name}")
         result = subprocess.run(
             ["schtasks", "/delete", "/tn", task_name, "/f"],
@@ -184,10 +180,10 @@ def delete_scheduled_task(task_name: str):
         if "成功" in result.stdout or result.returncode == 0:
             Log.info(f"已删除计划任务：{task_name}")
             return True, None
-
+        if "找不到指定的任务" in result.stderr:
+            return True, None
         return False, result.stderr
     except Exception as e:
-        # 如果异常信息表明任务不存在，也视为成功
         if "找不到指定的任务" in str(e) or "not found" in str(e):
             return True, None
         message = f"Delete task error: {str(e)}"

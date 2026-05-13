@@ -1,13 +1,17 @@
 import os
 import re
+import shutil
 import subprocess
+import sys
 import webbrowser
 from pathlib import Path
 
-from PyQt5.QtCore import QSize, QTimer, QThread, pyqtSignal, Qt
-from PyQt5.QtWidgets import QDialog, QMessageBox, QProgressDialog, QApplication
+from PyQt5.QtCore import QSize, QTimer, QThread, QEventLoop, pyqtSignal, Qt
+from PyQt5.QtGui import QFont
+from PyQt5.QtWidgets import (QDialog, QHBoxLayout, QLabel, QMessageBox,
+                             QProgressDialog, QPushButton, QVBoxLayout, QApplication)
 
-from src.utils.const import AppPath, Key
+from src.utils.const import AppPath, Key, WebPath
 from src.utils.utils import Utils
 from src.utils.log import Log
 from src.utils.update import VersionCheckThread, AppUpdateInstallThread
@@ -17,6 +21,7 @@ from src.extend.ssh_client import SshClient, SshConfig
 from src.store.settings_store import SettingsStore
 from src.store.data_store import LocalDataStore, RemoteDataStore, IDataStore
 from src.extend.remote_plan_service import RemotePlanService
+from src.extend.remote_linux_runner import RemoteLinuxRunner, RemoteLinuxLayout
 
 
 class AutoClockWindow(MainWindow):
@@ -38,6 +43,8 @@ class AutoClockWindow(MainWindow):
         self._update_threads = []
         self._update_install_thread: AppUpdateInstallThread | None = None
         self._update_progress_dialog: QProgressDialog | None = None
+        self._update_cancelled = False
+        self._pending_update_bat: Path | None = None
 
         self._local_data_root = AppPath.DataRoot
         self._local_data_json = AppPath.DataJson
@@ -68,6 +75,23 @@ class AutoClockWindow(MainWindow):
 
         self.refresh_ssh_status()
 
+    def closeEvent(self, event):
+        if self._pending_update_bat is not None and self._pending_update_bat.exists():
+            if sys.platform == "win32":
+                subprocess.Popen(
+                    [str(self._pending_update_bat)],
+                    shell=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+            else:
+                subprocess.Popen(
+                    [str(self._pending_update_bat)],
+                    shell=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+        event.accept()
+
     def _check_update_on_startup(self):
         try:
             pref = self.get_save_data(Key.CheckUpdateOnStartup, "on_startup")
@@ -78,6 +102,8 @@ class AutoClockWindow(MainWindow):
             pass
 
     def check_app_update(self, manual: bool = True):
+        if self._update_threads:
+            return
         try:
             thread = VersionCheckThread()
             self._update_threads.append(thread)
@@ -120,47 +146,100 @@ class AutoClockWindow(MainWindow):
         local_ver = str(ver.get("local") or "")
         remote_ver = str(ver.get("remote") or "")
 
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Information)
-        box.setWindowTitle("Update Available")
-        box.setText(
-            f"A new version is available\n\n"
-            f"Current: {local_ver}\n"
-            f"Latest: {remote_ver}\n\n"
-            f"Please choose an update option:"
-        )
-        box.setStyleSheet(
-            "QMessageBox { background-color: #ffffff; }"
-            "QLabel { color: #374151; font-size: 13px; }"
-            "QPushButton {"
-            "  padding: 4px 10px;"
-            "  border-radius: 4px;"
-            "  background-color: #f8fafc;"
-            "  color: #2563eb;"
-            "  border: 1px solid #cbd5e1;"
-            "  font-weight: 600;"
-            "  min-width: 60px;"
-            "  font-size: 12px;"
-            "}"
-            "QPushButton:hover { background-color: #eff6ff; border: 1px solid #3b82f6; }"
-            "QPushButton:pressed { background-color: #dbeafe; }"
-        )
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Update Available")
+        dialog.setFixedSize(400, 200)
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        dialog.setStyleSheet("QDialog { background-color: #ffffff; }")
 
-        btn_manual = box.addButton("Manual", QMessageBox.ActionRole)
-        btn_auto = box.addButton("Auto", QMessageBox.AcceptRole)
-        btn_cancel = box.addButton("Cancel", QMessageBox.RejectRole)
-        box.setDefaultButton(btn_auto)
-        box.exec_()
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(28, 22, 28, 18)
+        layout.setSpacing(0)
 
-        clicked = box.clickedButton()
-        if clicked == btn_manual:
-            webbrowser.open_new(self._manual_download_url(remote_ver))
-            return
-        if clicked == btn_auto:
+        icon_label = QLabel("\u2b06")
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setStyleSheet("font-size: 30px;")
+        layout.addWidget(icon_label)
+        layout.addSpacing(8)
+
+        subtitle = QLabel("A new version is available")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setStyleSheet(
+            "font-family: 'Microsoft YaHei', 'SimHei', sans-serif;"
+            "font-size: 14px; font-weight: bold; color: #1a1a1a;"
+        )
+        layout.addWidget(subtitle)
+        layout.addSpacing(6)
+
+        info = QLabel(
+            f"Current:  {local_ver}\n"
+            f"Latest:   {remote_ver}"
+        )
+        info.setAlignment(Qt.AlignCenter)
+        info.setStyleSheet(
+            "font-family: 'Microsoft YaHei', 'SimHei', sans-serif;"
+            "font-size: 12px; color: #6b7280;"
+        )
+        layout.addWidget(info)
+        layout.addSpacing(16)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+        btn_row.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setFixedSize(90, 34)
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background: #ffffff; color: #6b7280;
+                border: 1px solid #d1d5db; border-radius: 6px;
+                font-size: 12px; font-weight: 600;
+            }
+            QPushButton:hover { background: #f3f4f6; color: #374151; }
+            QPushButton:pressed { background: #e5e7eb; }
+        """)
+
+        manual_btn = QPushButton("Manual")
+        manual_btn.setFixedSize(90, 34)
+        manual_btn.setStyleSheet("""
+            QPushButton {
+                background: #ffffff; color: #2563eb;
+                border: 1px solid #2563eb; border-radius: 6px;
+                font-size: 12px; font-weight: 600;
+            }
+            QPushButton:hover { background: #eff6ff; }
+            QPushButton:pressed { background: #dbeafe; }
+        """)
+
+        auto_btn = QPushButton("Auto")
+        auto_btn.setFixedSize(90, 34)
+        auto_btn.setStyleSheet("""
+            QPushButton {
+                background: #2563eb; color: white;
+                border: none; border-radius: 6px;
+                font-size: 12px; font-weight: 600;
+            }
+            QPushButton:hover { background: #1d4ed8; }
+            QPushButton:pressed { background: #1e40af; }
+        """)
+
+        auto_btn.clicked.connect(dialog.accept)
+        manual_btn.clicked.connect(lambda: dialog.done(2))
+        cancel_btn.clicked.connect(dialog.reject)
+
+        btn_row.addWidget(auto_btn)
+        btn_row.addWidget(manual_btn)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        result = dialog.exec_()
+        dialog.deleteLater()
+
+        if result == QDialog.Accepted:
             self._run_auto_update_install(remote_ver)
-            return
-        if clicked == btn_cancel:
-            return
+        elif result == 2:
+            webbrowser.open_new(self._manual_download_url(remote_ver))
 
     def _run_auto_update_install(self, remote_ver: str):
         remote_ver = str(remote_ver or "").strip()
@@ -174,27 +253,56 @@ class AutoClockWindow(MainWindow):
             MessageBox("An update task is already in progress.")
             return
 
-        dialog = QProgressDialog("Preparing to download update package...", "", 0, 100, self)
+        self._update_cancelled = False
+
+        dialog = QProgressDialog("Preparing to download update package...", None, 0, 100, self)
         dialog.setWindowTitle("Auto Update")
         dialog.setWindowModality(Qt.ApplicationModal)
-        dialog.setCancelButton(None)
         dialog.setMinimumDuration(0)
         dialog.setAutoClose(False)
         dialog.setAutoReset(False)
         dialog.setValue(0)
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         dialog.show()
         self._update_progress_dialog = dialog
 
         thread = AppUpdateInstallThread(remote_ver)
         self._update_install_thread = thread
 
+        def _on_canceled():
+            self._update_cancelled = True
+            if self._update_progress_dialog is not None:
+                self._update_progress_dialog.hide()
+                self._update_progress_dialog.deleteLater()
+                self._update_progress_dialog = None
+
+            if self._update_install_thread is not None and self._update_install_thread.isRunning():
+                self._update_install_thread.terminate()
+                self._update_install_thread.wait(2000)
+                self._update_install_thread = None
+
+            updater_dir = Path(AppPath.UpdaterRoot)
+            platform_name = "windows" if os.name == "nt" else "linux"
+            target_dir = updater_dir / f"auto-clock-{remote_ver}-{platform_name}"
+            if target_dir.exists():
+                shutil.rmtree(target_dir, ignore_errors=True)
+            Log.info(f"Auto-update cancelled by user, cleaned: {target_dir}")
+
+        dialog.canceled.connect(_on_canceled)
+
         def _on_progress(percent: int, message: str):
+            if self._update_cancelled:
+                return
             if self._update_progress_dialog is None:
                 return
             self._update_progress_dialog.setLabelText(message or "Updating...")
             self._update_progress_dialog.setValue(max(0, min(100, int(percent))))
 
         def _on_finished(ok: bool, message: str, launch_path: str):
+            if self._update_cancelled:
+                self._update_install_thread = None
+                return
+
             if self._update_progress_dialog is not None:
                 self._update_progress_dialog.setValue(100)
                 self._update_progress_dialog.hide()
@@ -208,23 +316,136 @@ class AutoClockWindow(MainWindow):
                 MessageBox(f"Auto-update failed: {message}")
                 return
 
-            result = QMessageBox.question(
-                self,
-                "Update Complete",
-                f"{message}\n\nLaunch the new version and exit current program?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes,
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Update Complete")
+            dialog.setFixedSize(380, 170)
+            dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            dialog.setStyleSheet("QDialog { background-color: #ffffff; }")
+
+            layout = QVBoxLayout(dialog)
+            layout.setContentsMargins(28, 22, 28, 18)
+            layout.setSpacing(0)
+
+            check = QLabel("\u2713")
+            check.setAlignment(Qt.AlignCenter)
+            check.setStyleSheet("font-size: 34px; color: #22c55e; font-weight: bold;")
+            layout.addWidget(check)
+            layout.addSpacing(8)
+
+            text = QLabel(
+                "A new version has been downloaded.\n"
+                "Restart now to apply the update?"
             )
-            if result == QMessageBox.Yes:
-                try:
-                    launch = Path(str(launch_path or "").strip())
-                    if launch.exists():
-                        subprocess.Popen([str(launch)], cwd=str(launch.parent))
+            text.setAlignment(Qt.AlignCenter)
+            text.setStyleSheet(
+                "font-family: 'Microsoft YaHei', 'SimHei', sans-serif;"
+                "font-size: 13px; color: #4b5563;"
+            )
+            layout.addWidget(text)
+            layout.addSpacing(18)
+
+            btn_row = QHBoxLayout()
+            btn_row.setSpacing(10)
+            btn_row.addStretch()
+
+            later_btn = QPushButton("Later")
+            later_btn.setFixedSize(100, 36)
+            later_btn.setStyleSheet("""
+                QPushButton {
+                    background: #ffffff; color: #374151;
+                    border: 1px solid #d1d5db; border-radius: 6px;
+                    font-size: 13px; font-weight: 600;
+                }
+                QPushButton:hover { background: #f3f4f6; border-color: #9ca3af; }
+                QPushButton:pressed { background: #e5e7eb; }
+            """)
+
+            restart_btn = QPushButton("Restart Now")
+            restart_btn.setFixedSize(120, 36)
+            restart_btn.setStyleSheet("""
+                QPushButton {
+                    background: #2563eb; color: white;
+                    border: none; border-radius: 6px;
+                    font-size: 13px; font-weight: 600;
+                }
+                QPushButton:hover { background: #1d4ed8; }
+                QPushButton:pressed { background: #1e40af; }
+            """)
+
+            restart_btn.clicked.connect(dialog.accept)
+            later_btn.clicked.connect(dialog.reject)
+
+            btn_row.addWidget(restart_btn)
+            btn_row.addWidget(later_btn)
+            btn_row.addStretch()
+            layout.addLayout(btn_row)
+
+            result = dialog.exec_()
+            dialog.deleteLater()
+
+            def _write_bat(app_dir, new_dir, launch, include_start):
+                updater_dir = Path(AppPath.UpdaterRoot)
+                updater_dir.mkdir(parents=True, exist_ok=True)
+                if sys.platform == "win32":
+                    name = "_replace.bat" if include_start else "_apply_update.bat"
+                    bat_path = updater_dir / name
+                    lines = [
+                        '@echo off\n',
+                        'timeout /t 3 /nobreak >nul\n',
+                        f'robocopy "{new_dir}" "{app_dir}" /E /MOVE >nul 2>&1\n',
+                        f'if exist "{new_dir}" rmdir /S /Q "{new_dir}"\n',
+                    ]
+                    if include_start:
+                        lines.append(f'start "" "{app_dir / launch.name}"\n')
+                    lines.append('del "%~f0"\n')
+                    bat_path.write_text("".join(lines), encoding="utf-8")
+                    return bat_path
+                else:
+                    name = "_replace.sh" if include_start else "_apply_update.sh"
+                    sh_path = updater_dir / name
+                    lines = [
+                        '#!/bin/bash\n',
+                        'sleep 3\n',
+                        f'cp -a "{new_dir}/." "{app_dir}/"\n',
+                        f'rm -rf "{new_dir}"\n',
+                    ]
+                    if include_start:
+                        lines.append(f'nohup "{app_dir / launch.name}" > /dev/null 2>&1 &\n')
+                    lines.append('rm -f "$0"\n')
+                    sh_path.write_text("".join(lines), encoding="utf-8")
+                    os.chmod(str(sh_path), 0o755)
+                    return sh_path
+
+            try:
+                launch = Path(str(launch_path or "").strip())
+                if launch.exists():
+                    new_dir = launch.parent
+                    app_dir = Path(sys.executable).resolve().parent
+
+                    if result == QDialog.Accepted:
+                        bat = _write_bat(app_dir, new_dir, launch, include_start=True)
+                        subprocess.Popen(
+                            [str(bat)],
+                            shell=True,
+                            creationflags=subprocess.CREATE_NO_WINDOW,
+                        ) if sys.platform == "win32" else subprocess.Popen(
+                            [str(bat)],
+                            shell=True,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                        QApplication.quit()
                     else:
+                        bat = _write_bat(app_dir, new_dir, launch, include_start=False)
+                        self._pending_update_bat = bat
+                else:
+                    if result == QDialog.Accepted:
                         webbrowser.open_new(self._release_page(remote_ver))
-                except Exception:
+                        QApplication.quit()
+            except Exception:
+                if result == QDialog.Accepted:
                     webbrowser.open_new(self._release_page(remote_ver))
-                QApplication.quit()
+                    QApplication.quit()
 
         thread.progress_changed.connect(_on_progress)
         thread.install_finished.connect(_on_finished)
@@ -312,6 +533,26 @@ class AutoClockWindow(MainWindow):
             self.load_data_json()
             self._reload_pages()
             self.refresh_ssh_status()
+
+            runner_ok, runner_err = self.ensure_remote_runner_with_dialog()
+            if not runner_ok:
+                self._remote_connected = False
+                self._remote_host = None
+                self._remote_home_dir = None
+                self._remote_data_root_abs = None
+                self._remote_ssh_cfg = None
+                self._remote_plan_service = None
+                self._data_store = LocalDataStore()
+                AppPath.clear_remote()
+                AppPath.DataRoot = self._local_data_root
+                AppPath.DataJson = self._local_data_json
+                AppPath.TasksJson = self._local_tasks_json
+                AppPath.RunnerResultJson = self._local_runner_result_json
+                self.load_data_json()
+                self._reload_pages()
+                self.refresh_ssh_status()
+                return False, f"远端 runner 安装失败: {runner_err}"
+
             return True, None
         except Exception as e:
             self._remote_connected = False
@@ -402,6 +643,58 @@ class AutoClockWindow(MainWindow):
             return True, remote_driver_path
         except Exception as e:
             return False, str(e)
+
+    def ensure_remote_runner_with_dialog(self) -> tuple[bool, str | None]:
+        if not self.is_remote_connected():
+            return False, "SSH not connected"
+        if not self._remote_ssh_cfg:
+            return False, "SSH config missing"
+        if not AppPath.RemoteAppRoot:
+            return False, "Remote AppRoot not initialized"
+
+        version = Utils.get_app_version_from_config_json(default="")
+        if not version:
+            return False, "Cannot get version number"
+
+        dialog = QProgressDialog("Checking remote runner...", None, 0, 100, self)
+        dialog.setWindowTitle("Remote Runner Setup")
+        dialog.setWindowModality(Qt.ApplicationModal)
+        dialog.setCancelButton(None)
+        dialog.setMinimumDuration(0)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.setValue(0)
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        dialog.show()
+
+        thread = RemoteRunnerInstallThread(self._remote_ssh_cfg, AppPath.RemoteAppRoot, version)
+
+        state = {"ok": False, "error": ""}
+        wait_loop = QEventLoop()
+
+        def _on_progress(percent: int, message: str):
+            dialog.setLabelText(message or "Installing remote runner...")
+            dialog.setValue(max(0, min(100, int(percent))))
+
+        def _on_finished(ok: bool, message: str):
+            state["ok"] = bool(ok)
+            state["error"] = str(message or "")
+            wait_loop.quit()
+
+        thread.progress_changed.connect(_on_progress)
+        thread.install_finished.connect(_on_finished)
+        thread.finished.connect(thread.deleteLater)
+
+        thread.start()
+        wait_loop.exec_()
+
+        dialog.setValue(100)
+        dialog.hide()
+        dialog.deleteLater()
+
+        if state["ok"]:
+            return True, None
+        return False, state["error"]
 
     def _reload_pages(self):
         try:
@@ -579,6 +872,48 @@ class _SshProbeThread(QThread):
         except Exception:
             ok = False
         self.result.emit(ok)
+
+
+class RemoteRunnerInstallThread(QThread):
+    progress_changed = pyqtSignal(int, str)
+    install_finished = pyqtSignal(bool, str)
+
+    def __init__(self, ssh_cfg: SshConfig, remote_app_root: str, version: str):
+        super().__init__()
+        self._ssh_cfg = ssh_cfg
+        self._remote_app_root = remote_app_root
+        self._version = version
+
+    def run(self):
+        try:
+            url = WebPath.LinuxRunnerDownloadUrlTemplate.format(version=self._version)
+            with SshClient(self._ssh_cfg) as ssh:
+                layout = RemoteLinuxLayout(app_root=self._remote_app_root)
+                remote = RemoteLinuxRunner(ssh, layout=layout)
+
+                if remote.remote_has_version(self._version):
+                    self.progress_changed.emit(80, "Runner already downloaded, setting current...")
+                else:
+                    self.progress_changed.emit(5, "Preparing to download runner...")
+
+                    def _on_progress(percent: int):
+                        self.progress_changed.emit(max(5, min(80, percent)), f"Downloading runner... ({percent}%)")
+
+                    ok, err = remote.ensure_installed_from_url(self._version, url, progress_callback=_on_progress)
+                    if not ok:
+                        self.install_finished.emit(False, err or "Remote runner installation failed")
+                        return
+
+                self.progress_changed.emit(95, "Setting current version...")
+                code, _, err2 = remote.set_current(self._version)
+                if code != 0:
+                    self.install_finished.emit(False, err2 or "Set current version failed")
+                    return
+
+                self.progress_changed.emit(100, "Remote runner is ready")
+                self.install_finished.emit(True, "")
+        except Exception as e:
+            self.install_finished.emit(False, str(e))
 
 
 def _update_title_bar_status(window: AutoClockWindow, is_local: bool, ok: bool, host: str | None):

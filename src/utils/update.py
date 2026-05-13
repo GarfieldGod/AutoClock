@@ -33,10 +33,10 @@ def check_update():
             try:
                 response = requests.get(WebPath.AppConfigPathGitHub, timeout=2)
             except Exception as e:
-                Log.info(f"GitHub 版本检测失败，尝试使用 Gitee 进行版本检测：{e}")
+                Log.info(f"GitHub version check failed, fallback to Gitee: {e}")
                 response = requests.get(WebPath.AppConfigPathGitee, timeout=3)
         else:
-            Log.info("检测到当前网络不可直连 GitHub，版本检查改走 Gitee")
+            Log.info("Direct GitHub access unavailable, checking via Gitee")
             response = requests.get(WebPath.AppConfigPathGitee, timeout=3)
 
         if not response: 
@@ -53,14 +53,13 @@ def check_update():
         else:
             return False, version
     except Exception as e:
-        Log.info(f"版本检测失败：{e}")
+        Log.info(f"Version check failed: {e}")
         # 返回空字典而不是None，以避免类型错误
         return False, {}
 
 
 def compare_version(ver1, ver2):
     v1 = list(map(int, ver1.split(".")))
-    v2 = list(map(int, ver2.split(".")))
     v2 = list(map(int, ver2.split(".")))
     max_len = max(len(v1), len(v2))
     v1 += [0] * (max_len - len(v1))
@@ -75,7 +74,7 @@ class VersionCheckThread(QThread):
         super().__init__()
 
     def run(self):
-        Log.info("后台执行版本检查...")
+        Log.info("Running version check in background...")
         ok, ver = check_update()
         self.check_finished.emit(ok, ver)
 
@@ -116,28 +115,28 @@ def _find_app_executable(root: Path) -> Path | None:
 
 def auto_download_and_install(version: str, progress_callback=None) -> tuple[bool, str, str]:
     if not getattr(sys, "frozen", False):
-        return False, "开发环境不支持自动安装，请使用手动下载。", ""
+        return False, "Auto-install is not supported in development environment. Please download manually.", ""
 
     version = str(version or "").strip()
     if not version:
-        return False, "版本号为空", ""
+        return False, "Version number is empty.", ""
 
-    current_dir = Path(sys.executable).resolve().parent
-    install_root = current_dir.parent
     platform_name = "windows" if os.name == "nt" else "linux"
-    target_dir = install_root / f"auto-clock-{version}-{platform_name}"
+    updater_dir = Path(AppPath.UpdaterRoot)
+    updater_dir.mkdir(parents=True, exist_ok=True)
+    target_dir = updater_dir / f"auto-clock-{version}-{platform_name}"
 
     archive_ext = ".zip" if os.name == "nt" else ".tar.gz"
     download_url = _app_download_url(version)
 
-    _notify_update_progress(progress_callback, 3, "准备下载更新包...")
+    _notify_update_progress(progress_callback, 3, "Preparing download...")
     with tempfile.TemporaryDirectory() as td:
         temp_dir = Path(td)
         archive_path = temp_dir / f"auto-clock-{version}{archive_ext}"
 
         def _on_download_percent(percent: int):
             mapped = 8 + int(max(0, min(100, int(percent))) * 0.70)
-            _notify_update_progress(progress_callback, mapped, "正在下载更新包...")
+            _notify_update_progress(progress_callback, mapped, "Downloading update package...")
 
         DownloadHelper.download_file(
             url=download_url,
@@ -146,7 +145,7 @@ def auto_download_and_install(version: str, progress_callback=None) -> tuple[boo
             progress_callback=_on_download_percent,
         )
 
-        _notify_update_progress(progress_callback, 80, "正在解压安装包...")
+        _notify_update_progress(progress_callback, 80, "Extracting update package...")
         extract_dir = temp_dir / "extract"
         extract_dir.mkdir(parents=True, exist_ok=True)
 
@@ -162,18 +161,23 @@ def auto_download_and_install(version: str, progress_callback=None) -> tuple[boo
         if len(roots) == 1 and roots[0].is_dir():
             source_root = roots[0]
 
-        _notify_update_progress(progress_callback, 88, "正在安装到本地目录...")
+        _notify_update_progress(progress_callback, 88, "Installing to local directory...")
         if target_dir.exists():
             shutil.rmtree(target_dir, ignore_errors=True)
         shutil.copytree(source_root, target_dir, dirs_exist_ok=True)
 
-    _notify_update_progress(progress_callback, 95, "正在定位新版本启动文件...")
+        # 清理 auto-updater 目录下除当前版本外的其他旧版本目录
+        for dir in updater_dir.iterdir():
+            if dir.is_dir() and dir != target_dir:
+                shutil.rmtree(dir, ignore_errors=True)
+
+    _notify_update_progress(progress_callback, 95, "Locating new version executable...")
     launch_path = _find_app_executable(target_dir)
     if not launch_path:
-        return False, f"安装完成但未找到可执行文件：{target_dir}", ""
+        return False, f"Installation complete but executable not found: {target_dir}", ""
 
-    _notify_update_progress(progress_callback, 100, "更新安装完成")
-    return True, f"已安装到：{target_dir}", str(launch_path)
+    _notify_update_progress(progress_callback, 100, "Update installation completed.")
+    return True, f"Installed to: {target_dir}", str(launch_path)
 
 
 class AppUpdateInstallThread(QThread):

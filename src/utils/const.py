@@ -101,6 +101,7 @@ class AppPath:
         DriversRoot = os.path.join(AppRoot, "driver")
         ScreenshotRoot = os.path.join(AppRoot, "screenshot")
     
+    UpdaterRoot: str = os.path.join(AppRoot, "updater")
     DataJson: str = os.path.join(DataRoot, "data.json")
     TasksJson: str = os.path.join(DataRoot, "tasks.json")
     RunnerResultJson: str = os.path.join(DataRoot, "runner_result.json")
@@ -151,6 +152,6 @@ class WebPath:
     AppLinuxDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-{version}-linux.tar.gz"
     NeusoftKQPath: str = "https://kq.neusoft.com/"
     NeusoftKQLoginPath: str = "https://kq.neusoft.com/login"
-    LinuxRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/linux-runner-{version}.tar.gz"
+    LinuxRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-runner-{version}-linux.tar.gz"
     LocalWindowsRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-runner-{version}-windows.zip"
     LocalLinuxRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-runner-{version}-linux.tar.gz"
