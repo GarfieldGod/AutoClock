@@ -5,6 +5,9 @@ from ui.main_window.auto_clock_window import AutoClockPageContent, AutoClockCont
 from ui.custom.custom_style import get_group_css
 from ui.custom.custom_widget import CheckBox, LineEdit, PasswordLineEdit
 
+_LABEL_STYLE = "color:#4b5563; font-size:13px;"
+
+
 class NotificationPage(AutoClockPageContent):
     # show_grid = True
     def __init__(self, y, x):
@@ -14,7 +17,7 @@ class NotificationPage(AutoClockPageContent):
         email = EmailContainer(6, 3)
         self.add_container(email, 0, 0)
 
-        timing = SendTimeContainer(6, 2)
+        timing = SendTimeContainer(3, 2)
         self.add_container(timing, 3, 0)
 
         self.input_save_widget = [
@@ -26,6 +29,7 @@ class NotificationPage(AutoClockPageContent):
             timing.send_email_failed,
             timing.send_email_success
         ]
+
 
 class EmailContainer(AutoClockContainer):
     def __init__(self, x, y):
@@ -45,27 +49,37 @@ class EmailContainer(AutoClockContainer):
         layout.setSpacing(10)
         layout.setContentsMargins(14, 18, 14, 14)
 
-        for r, (label, widget) in enumerate([
+        fields = [
             ("Notification Email:", self.notification_email),
             ("Sender Email:", self.sender_email),
             ("Auth Code:", self.sender_auth_code),
-        ]):
-            layout.addWidget(QLabel(label), r, 0)
+        ]
+        for r, (text, widget) in enumerate(fields):
+            lbl = QLabel(text)
+            lbl.setStyleSheet(_LABEL_STYLE)
+            layout.addWidget(lbl, r, 0)
             layout.addWidget(widget, r, 1)
 
-        layout.addWidget(QLabel("SMTP Server:"), 3, 0)
+        smtp_label = QLabel("SMTP Server:")
+        smtp_label.setStyleSheet(_LABEL_STYLE)
+        layout.addWidget(smtp_label, 3, 0)
+
         smtp_row = QHBoxLayout()
+        smtp_row.setSpacing(6)
         smtp_row.addWidget(self.smtp_server, 1)
-        smtp_row.addSpacing(4)
-        smtp_row.addWidget(QLabel("Port:"))
-        smtp_row.addSpacing(4)
+        port_label = QLabel("Port:")
+        port_label.setStyleSheet(_LABEL_STYLE)
+        smtp_row.addWidget(port_label)
+        self.smtp_port.setFixedWidth(80)
         smtp_row.addWidget(self.smtp_port)
         layout.addLayout(smtp_row, 3, 1)
 
         layout.setColumnStretch(1, 1)
+        layout.setColumnMinimumWidth(0, 140)
 
         layout_container = QVBoxLayout(self)
         layout_container.addWidget(group_notification)
+
 
 class SendTimeContainer(AutoClockContainer):
     def __init__(self, x, y):
@@ -80,21 +94,27 @@ class SendTimeContainer(AutoClockContainer):
         group_notification = QGroupBox("Timing")
         group_notification.setStyleSheet(get_group_css({}))
         layout_notification = QVBoxLayout(group_notification)
+        layout_notification.setSpacing(8)
+        layout_notification.setContentsMargins(14, 12, 14, 12)
 
-        layout_send_email = QVBoxLayout()
-        layout_send_email.addStretch()
         title = QLabel("Send Email When:")
-        layout_send_email.addWidget(title)
-        layout_send_email.addStretch()
-        layout_send_email_checkbox = QHBoxLayout()
-        layout_send_email_checkbox.addWidget(QLabel("Failed"))
-        layout_send_email_checkbox.addWidget(self.send_email_failed)
-        layout_send_email_checkbox.addWidget(QLabel("Success"))
-        layout_send_email_checkbox.addWidget(self.send_email_success)
-        layout_send_email.addLayout(layout_send_email_checkbox)
-        layout_send_email.addStretch()
+        title.setStyleSheet("color:#374151; font-weight:600; font-size:13px;")
+        layout_notification.addWidget(title)
 
-        layout_notification.addLayout(layout_send_email)
+        checkbox_row = QHBoxLayout()
+        checkbox_row.setSpacing(16)
+
+        for label_text, checkbox in [
+            ("Failed", self.send_email_failed),
+            ("Success", self.send_email_success),
+        ]:
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet("color:#4b5563; font-size:13px;")
+            checkbox_row.addWidget(lbl)
+            checkbox_row.addWidget(checkbox)
+
+        checkbox_row.addStretch()
+        layout_notification.addLayout(checkbox_row)
 
         layout_container = QVBoxLayout(self)
         layout_container.addWidget(group_notification)

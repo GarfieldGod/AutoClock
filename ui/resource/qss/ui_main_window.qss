@@ -54,9 +54,10 @@
 QPushButton {
     font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
     background-color: white;
-    font-size: 16px;
-    border: 1px solid #bbbbbb;
-    border-radius: 5px;
+    font-size: 13px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 6px 14px;
 }
 
 QPushButton:hover {
@@ -72,7 +73,7 @@ QGroupBox {
     font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
     font-weight: bold;
     font-size: 16px;
-    color: #888888;
+    border-radius: 8px;
 }
 
 #btn_minimize, #btn_maximize, #btn_close {
@@ -84,12 +85,16 @@ QGroupBox {
 #close_btn {
     background-color: white;
     font-size: 16px;
-    border: 1px solid #bbbbbb;
+    border: 1px solid #d1d5db;
     border-radius: 10px;
+    padding: 0;
+    min-width: 28px;
+    min-height: 28px;
 }
 
 #close_btn:hover {
     background-color: #e74c3c;
+    color: white;
 }
 
 #close_btn:pressed {
@@ -99,12 +104,16 @@ QGroupBox {
 #min_btn {
     background-color: white;
     font-size: 16px;
-    border: 1px solid #bbbbbb;
+    border: 1px solid #d1d5db;
     border-radius: 10px;
+    padding: 0;
+    min-width: 28px;
+    min-height: 28px;
 }
 
 #min_btn:hover {
     background-color: #34495e;
+    color: white;
 }
 
 #min_btn:pressed {
@@ -114,22 +123,18 @@ QGroupBox {
 #max_btn {
     background-color: white;
     font-size: 16px;
-    border: 1px solid #bbbbbb;
+    border: 1px solid #d1d5db;
     border-radius: 10px;
+    padding: 0;
+    min-width: 28px;
+    min-height: 28px;
 }
 
 #max_btn:hover {
     background-color: #34495e;
+    color: white;
 }
 
 #max_btn:pressed {
     background-color: #1a252f;
-}
-
-#MessageBox_Label {
-    font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
-    font-weight: bold;
-    font-size: 20px;
-    color: gray;
-    border: 2px sold #bbbbbb;
 }

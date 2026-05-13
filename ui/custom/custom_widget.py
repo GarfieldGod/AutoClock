@@ -1,6 +1,6 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QFontMetrics
-from PyQt5.QtWidgets import QLineEdit, QCheckBox, QWidget, QHBoxLayout, QPushButton, QFileDialog, QComboBox, QSizePolicy
+from PyQt5.QtWidgets import QLineEdit, QCheckBox, QWidget, QHBoxLayout, QPushButton, QFileDialog, QComboBox, QSizePolicy, QVBoxLayout
 
 from src.utils.const import Key
 from src.utils.utils import Utils
@@ -34,8 +34,10 @@ class PasswordLineEdit(QWidget):
         self._line.setEchoMode(QLineEdit.Password)
 
         self._btn = QPushButton()
-        self._btn.setFixedSize(24, 24)
-        self._btn.setStyleSheet("border: none; background-color: transparent;")
+        self._btn.setFixedWidth(28)
+        self._btn.setStyleSheet("border: none; background-color: transparent; padding:0; font-size:18px;")
+
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._btn.setText("\U0001F512")
         self._btn.setToolTip("\u663E\u793A\u5BC6\u7801")
         self._btn.clicked.connect(self._toggle_visibility)
@@ -79,6 +81,11 @@ class FileSelectLineEdit(QWidget):
         self._line = QLineEdit()
         self._btn = QPushButton("...")
         self._btn.setFixedWidth(30)
+        self._btn.setStyleSheet(
+            "QPushButton { background:transparent; border:1px solid #d1d5db; "
+            "border-radius:4px; padding:0; font-size:14px; font-weight:bold; color:#4b5563; }"
+            "QPushButton:hover { background-color:#f3f4f6; }"
+        )
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

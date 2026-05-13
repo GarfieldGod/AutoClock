@@ -453,10 +453,9 @@ class AutoClockWindow(MainWindow):
         thread.start()
 
     def refresh_ssh_status(self):
-        enabled = _truthy(self.get_save_data(Key.SshEnabled, False))
         host = _safe_str(self.get_save_data(Key.SshHost, "")).strip()
 
-        if not enabled or not _is_non_empty(host):
+        if not _is_non_empty(host):
             self._remote_connected = False
             self._remote_host = None
             _update_title_bar_status(self, is_local=True, ok=True, host=None)
@@ -466,22 +465,18 @@ class AutoClockWindow(MainWindow):
         if ok:
             _update_title_bar_status(self, is_local=False, ok=True, host=host)
         else:
-            # 未手动连接成功时，按未连接状态展示（避免出现失败红灯）
             _update_title_bar_status(self, is_local=True, ok=True, host=None)
 
     def is_remote_connected(self) -> bool:
         return bool(self._remote_connected)
 
     def connect_remote_and_reload(self) -> tuple[bool, str | None]:
-        enabled = _truthy(self.get_save_data(Key.SshEnabled, False))
         host = _safe_str(self.get_save_data(Key.SshHost, "")).strip()
         username = _safe_str(self.get_save_data(Key.SshUsername, "")).strip()
         password = _safe_str(self.get_save_data(Key.SshPassword, ""))
         use_pkey = _truthy(self.get_save_data(Key.SshUsePrivateKey, False))
         pkey_path = _safe_str(self.get_save_data(Key.SshPrivateKeyPath, "")).strip()
 
-        if not enabled:
-            return False, "未启用SSH"
         if not _is_non_empty(host):
             return False, "未填写IP"
         if not _is_non_empty(username):

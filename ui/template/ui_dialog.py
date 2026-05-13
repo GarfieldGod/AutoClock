@@ -42,11 +42,29 @@ class Dialog(QDialog):
             show_close_button=False,
             window=self)
 
-        self.confirm_button = QPushButton("confirm")
+        self.confirm_button = QPushButton("Confirm")
         self.confirm_button.setFixedSize(button_size)
+        self.confirm_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2563eb; color: white;
+                border: none; border-radius: 6px;
+                font-weight: 600; font-size: 13px;
+            }
+            QPushButton:hover { background-color: #1d4ed8; }
+            QPushButton:pressed { background-color: #1e40af; }
+        """)
         if not show_confirm_button: self.confirm_button.hide()
-        self.cancel_button = QPushButton("cancel")
+        self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setFixedSize(button_size)
+        self.cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff; color: #374151;
+                border: 1px solid #d1d5db; border-radius: 6px;
+                font-weight: 600; font-size: 13px;
+            }
+            QPushButton:hover { background-color: #f3f4f6; border-color: #9ca3af; }
+            QPushButton:pressed { background-color: #e5e7eb; }
+        """)
         if not show_cancel_button: self.cancel_button.hide()
         self.confirm_button.clicked.connect(self.accept)
         self.cancel_button.clicked.connect(self.reject)

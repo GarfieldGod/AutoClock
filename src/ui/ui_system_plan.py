@@ -3,8 +3,8 @@ import platform
 from datetime import datetime, timedelta
 
 from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import QDate, QLocale
-from PyQt5.QtWidgets import QDialogButtonBox, QVBoxLayout, QComboBox, QWidget, QHBoxLayout, QLineEdit, QDialog, QLabel
+from PyQt5.QtCore import QDate, QLocale, Qt
+from PyQt5.QtWidgets import QVBoxLayout, QComboBox, QWidget, QHBoxLayout, QLineEdit, QDialog, QLabel, QPushButton
 
 from src.utils.log import Log
 from src.utils.const import Key
@@ -12,6 +12,35 @@ from src.ui.ui_calendar import Calendar, WeeklyCalendar
 from src.utils.utils import Utils
 from src.utils.qt_ui import QtUI
 from src.ui.ui_message import MessageBox
+
+
+_DIALOG_STYLE = """
+    QDialog {
+        background-color: #ffffff;
+    }
+"""
+
+_BTN_PRIMARY = """
+    QPushButton {
+        background-color: #2563eb; color: white;
+        border: none; border-radius: 6px;
+        padding: 8px 24px; font-weight: 600; font-size: 13px;
+        min-width: 80px;
+    }
+    QPushButton:hover { background-color: #1d4ed8; }
+    QPushButton:pressed { background-color: #1e40af; }
+"""
+
+_BTN_SECONDARY = """
+    QPushButton {
+        background-color: #ffffff; color: #374151;
+        border: 1px solid #d1d5db; border-radius: 6px;
+        padding: 8px 24px; font-weight: 600; font-size: 13px;
+        min-width: 80px;
+    }
+    QPushButton:hover { background-color: #f3f4f6; border-color: #9ca3af; }
+    QPushButton:pressed { background-color: #e5e7eb; }
+"""
 
 
 class SystemPlanDialog(QDialog):
@@ -22,140 +51,163 @@ class SystemPlanDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         try:
-            self.setMinimumWidth(500)
+            self.setMinimumWidth(520)
             self.setWindowTitle("Create Windows Plan")
             self.setWindowIcon(QIcon(Utils.get_ico_path()))
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            self.setStyleSheet(_DIALOG_STYLE)
             self.locale = QLocale(QLocale.English)
-            # 任务名
+
             self.plan_name_edit = QLineEdit()
             self.plan_name_edit.setText(Key.DefaultSystemPlanName)
-            # 触发类型
+            self.plan_name_edit.setStyleSheet(
+                "QLineEdit { border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px; font-size: 13px; }"
+                "QLineEdit:focus { border-color: #2563eb; }"
+            )
+
             self.trigger_type = QComboBox()
             self.trigger_type.addItems(self.trigger_types)
             self.trigger_type.currentTextChanged.connect(self.trigger_type_changed)
-            # 操作
+
             self.operation = QComboBox()
             self.operation.addItems(self.operation_types)
-            # dayTime类型
+
             self.day_time_type = QComboBox()
             self.day_time_type.addItems(self.day_time_types)
             self.day_time_type.currentTextChanged.connect(self.day_time_type_changed)
 
-            widget_layout = QVBoxLayout(self)
+            _combo_style = (
+                "QComboBox { border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px; font-size: 13px; }"
+                "QComboBox:focus { border-color: #2563eb; }"
+                "QComboBox::drop-down { border: none; width: 24px; }"
+            )
+            for cb in [self.trigger_type, self.operation, self.day_time_type]:
+                cb.setStyleSheet(_combo_style)
 
-            # 常规设置
+            widget_layout = QVBoxLayout(self)
+            widget_layout.setContentsMargins(20, 16, 20, 16)
+            widget_layout.setSpacing(10)
+
             widget_setting = QWidget()
             layout_setting = QVBoxLayout(widget_setting)
-            widget_line_1 = QHBoxLayout()
-            # 选择Plan Name
-            widget_line_1.addWidget(QtUI.create_label("Plan Name:"))
-            widget_line_1.addWidget(self.plan_name_edit)
-            widget_line_2 = QHBoxLayout()
-            # 选择Trigger Type
-            widget_line_2.addWidget(QtUI.create_label("Trigger Type:"))
-            widget_line_2.addWidget(self.trigger_type)
-            # 选择Operation
-            widget_line_3 = QHBoxLayout()
-            widget_line_3.addWidget(QtUI.create_label("Operation:"))
-            widget_line_3.addWidget(self.operation)
-            # 选择DayTime Type
-            widget_line_4 = QHBoxLayout()
-            widget_line_4.addWidget(QtUI.create_label("DayTime Type:"))
-            widget_line_4.addWidget(self.day_time_type)
+            layout_setting.setSpacing(8)
+            layout_setting.setContentsMargins(0, 0, 0, 0)
 
-            layout_setting.addLayout(widget_line_1)
-            layout_setting.addLayout(widget_line_2)
-            layout_setting.addLayout(widget_line_3)
-            layout_setting.addLayout(widget_line_4)
+            def _make_row(label_text, widget):
+                row = QHBoxLayout()
+                row.setSpacing(10)
+                lbl = QtUI.create_label(label_text)
+                lbl.setStyleSheet("color:#374151; font-weight:600; font-size:13px;")
+                lbl.setFixedWidth(120)
+                row.addWidget(lbl)
+                row.addWidget(widget, 1)
+                layout_setting.addLayout(row)
+
+            _make_row("Plan Name:", self.plan_name_edit)
+            _make_row("Trigger Type:", self.trigger_type)
+            _make_row("Operation:", self.operation)
+            _make_row("DayTime Type:", self.day_time_type)
+
             widget_layout.addWidget(widget_setting)
 
             if platform.system() == "Linux":
-                info_widget = QWidget()
-                info_layout = QHBoxLayout(info_widget)
                 info_label = QLabel("注意: Linux计划任务将使用crontab实现，可能需要sudo权限")
-                info_label.setStyleSheet("color: orange; font-size: 12px;")
-                info_layout.addWidget(info_label)
-                widget_layout.addWidget(info_widget)
+                info_label.setStyleSheet("color: #d97706; font-size: 12px; padding: 4px 0;")
+                widget_layout.addWidget(info_label)
 
-            # 特定DayTime
             self.widget_specify_day_time_selector = QWidget()
             self.layout_specify_day_time_selector = QHBoxLayout(self.widget_specify_day_time_selector)
+            self.layout_specify_day_time_selector.setContentsMargins(0, 0, 0, 0)
             self.hour_sel = QComboBox()
             self.hour_sel.addItems(Utils.get_nums_array(0,23))
             self.hour_sel.setCurrentIndex(datetime.now().hour)
+            self.hour_sel.setStyleSheet(_combo_style)
             self.minute_sel = QComboBox()
             self.minute_sel.addItems(Utils.get_nums_array(0,59))
             self.minute_sel.setCurrentIndex(datetime.now().minute)
+            self.minute_sel.setStyleSheet(_combo_style)
             self.layout_specify_day_time_selector.addWidget(QtUI.create_label("DayTime:"))
             self.layout_specify_day_time_selector.addStretch()
             self.layout_specify_day_time_selector.addWidget(QtUI.create_label("Hours:", size=10, length=50))
             self.layout_specify_day_time_selector.addWidget(self.hour_sel)
             self.layout_specify_day_time_selector.addWidget(QtUI.create_label("Minute:", size=10, length=50))
             self.layout_specify_day_time_selector.addWidget(self.minute_sel)
-            # 随机DayTime
+
             self.widget_random_day_time_selector = QWidget()
             self.layout_random_day_time_selector = QHBoxLayout(self.widget_random_day_time_selector)
+            self.layout_random_day_time_selector.setContentsMargins(0, 0, 0, 0)
             self.hour_sel_start = QComboBox()
             self.hour_sel_start.addItems(Utils.get_nums_array(0,23))
             self.hour_sel_start.setCurrentIndex(datetime.now().hour)
+            self.hour_sel_start.setStyleSheet(_combo_style)
             self.minute_sel_start = QComboBox()
             self.minute_sel_start.addItems(Utils.get_nums_array(0,59))
             self.minute_sel_start.setCurrentIndex(datetime.now().minute)
+            self.minute_sel_start.setStyleSheet(_combo_style)
             self.hour_sel_end = QComboBox()
             self.hour_sel_end.addItems(Utils.get_nums_array(0,23))
             self.hour_sel_end.setCurrentIndex(datetime.now().hour)
+            self.hour_sel_end.setStyleSheet(_combo_style)
             self.minute_sel_end = QComboBox()
             self.minute_sel_end.addItems(Utils.get_nums_array(0,59))
             self.minute_sel_end.setCurrentIndex(datetime.now().minute)
+            self.minute_sel_end.setStyleSheet(_combo_style)
+            dash_label = QLabel("-")
+            dash_label.setStyleSheet("color:#6b7280; font-weight:bold;")
             self.layout_random_day_time_selector.addWidget(QtUI.create_label("DayTime Scope:"))
             self.layout_random_day_time_selector.addStretch()
             self.layout_random_day_time_selector.addWidget(self.hour_sel_start)
             self.layout_random_day_time_selector.addWidget(self.minute_sel_start)
-            self.layout_random_day_time_selector.addWidget(QLabel("-"))
+            self.layout_random_day_time_selector.addWidget(dash_label)
             self.layout_random_day_time_selector.addWidget(self.hour_sel_end)
             self.layout_random_day_time_selector.addWidget(self.minute_sel_end)
 
-            # 批量选择
             self.calendar_selector = Calendar()
 
-            # 指定日
             self.widget_one_day_selector = QWidget()
             self.layout_one_day_selector = QHBoxLayout(self.widget_one_day_selector)
+            self.layout_one_day_selector.setContentsMargins(0, 0, 0, 0)
             self.year_sel = QComboBox()
             self.year_sel.addItems([str(QDate.currentDate().year()), str(QDate.currentDate().addYears(1).year())])
             self.year_sel.currentIndexChanged.connect(self.year_changed)
+            self.year_sel.setStyleSheet(_combo_style)
             self.month_sel = QComboBox()
             self.month_sel.addItems(Utils.get_nums_array(1,12))
             self.month_sel.setCurrentIndex(datetime.now().month - 1)
             self.month_sel.currentIndexChanged.connect(self.month_changed)
+            self.month_sel.setStyleSheet(_combo_style)
             self.day_sel = QComboBox()
             self.day_sel.addItems(Utils.get_nums_array(1, 31))
             self.day_sel.setCurrentIndex(datetime.now().day - 1)
+            self.day_sel.setStyleSheet(_combo_style)
             self.layout_one_day_selector.addWidget(QtUI.create_label("Year:", size=10, length=50))
             self.layout_one_day_selector.addWidget(self.year_sel)
             self.layout_one_day_selector.addWidget(QtUI.create_label("Month:", size=10, length=50))
             self.layout_one_day_selector.addWidget(self.month_sel)
             self.layout_one_day_selector.addWidget(QtUI.create_label("Day:", size=10, length=50))
             self.layout_one_day_selector.addWidget(self.day_sel)
-            # 每日
+
             self.widget_daily_selector = QWidget()
-            # 指定每周
+
             self.widget_weekly_selector = QWidget()
             self.layout_weekly_selector = QHBoxLayout(self.widget_weekly_selector)
+            self.layout_weekly_selector.setContentsMargins(0, 0, 0, 0)
             self.layout_weekly_selector.addWidget(QtUI.create_label("The Day:"))
             self.weekly_day_sel = WeeklyCalendar()
             self.layout_weekly_selector.addWidget(self.weekly_day_sel)
-            # 指定每月
+
             self.widget_monthly_selector = QWidget()
             self.layout_monthly_selector = QHBoxLayout(self.widget_monthly_selector)
+            self.layout_monthly_selector.setContentsMargins(0, 0, 0, 0)
             self.monthly_day_sel = QComboBox()
             self.monthly_day_sel.addItems(Utils.get_nums_array(1,31))
+            self.monthly_day_sel.setStyleSheet(_combo_style)
             self.layout_monthly_selector.addWidget(QtUI.create_label("The Day:"))
             self.layout_monthly_selector.addWidget(self.monthly_day_sel)
             self.monthly_day_sel.setCurrentIndex(datetime.now().day - 1)
 
-            # 预留变化区
             self.day_time_space_area = QVBoxLayout()
+            self.day_time_space_area.setContentsMargins(0, 0, 0, 0)
             self.day_time_space_area.addWidget(self.widget_specify_day_time_selector)
             self.day_time_space_area.addWidget(self.widget_random_day_time_selector)
             widget_layout.addLayout(self.day_time_space_area)
@@ -163,6 +215,7 @@ class SystemPlanDialog(QDialog):
             self.widget_specify_day_time_selector.show()
 
             self.space_area = QVBoxLayout()
+            self.space_area.setContentsMargins(0, 0, 0, 0)
             self.space_area.addWidget(self.widget_one_day_selector)
             self.space_area.addWidget(self.calendar_selector)
             self.space_area.addWidget(self.widget_daily_selector)
@@ -172,11 +225,18 @@ class SystemPlanDialog(QDialog):
             self.space_area_hide_all_content(self.space_area)
             self.widget_one_day_selector.show()
 
-            # 按键
-            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            buttons.accepted.connect(self.accept)
-            buttons.rejected.connect(self.reject)
-            widget_layout.addWidget(buttons)
+            btn_row = QHBoxLayout()
+            btn_row.setSpacing(10)
+            btn_row.addStretch()
+            ok_btn = QPushButton("OK")
+            ok_btn.setStyleSheet(_BTN_PRIMARY)
+            ok_btn.clicked.connect(self.accept)
+            cancel_btn = QPushButton("Cancel")
+            cancel_btn.setStyleSheet(_BTN_SECONDARY)
+            cancel_btn.clicked.connect(self.reject)
+            btn_row.addWidget(ok_btn)
+            btn_row.addWidget(cancel_btn)
+            widget_layout.addLayout(btn_row)
         except Exception as e:
             Log.error(e)
             MessageBox(e)
@@ -200,7 +260,6 @@ class SystemPlanDialog(QDialog):
         elif current == self.trigger_types[4]:
             self.widget_monthly_selector.show()
         elif current == Key.SmartHoliday:
-            # SmartHoliday does not allow manual date selection
             pass
         else:
             self.widget_daily_selector.show()

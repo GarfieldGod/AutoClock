@@ -53,8 +53,8 @@ class UserInfoContainer(AutoClockContainer):
         self.init_ui_layout()
 
     def init_ui_format(self):
-        self.show_password_btn.setFixedSize(24, 24)
-        self.show_password_btn.setStyleSheet("border: none; background-color: transparent;")
+        self.show_password_btn.setFixedSize(28, 28)
+        self.show_password_btn.setStyleSheet("border: none; background-color: transparent; padding:0; font-size:18px;")
 
         self.show_password_btn.setText("🔒")
         self.show_password_btn.setToolTip("显示密码")
@@ -108,8 +108,8 @@ class WebDriverContainer(AutoClockContainer):
         self.init_ui_layout()
 
     def init_ui_format(self):
-        self.download_driver_btn.setFixedSize(24, 24)
-        self.download_driver_btn.setStyleSheet("border: none; background-color: transparent;")
+        self.download_driver_btn.setFixedSize(28, 28)
+        self.download_driver_btn.setStyleSheet("border: none; background-color: transparent; padding:0; font-size:18px;")
         self.download_driver_btn.setText("⬇")
         self.download_driver_btn.setToolTip("自动下载匹配Driver")
         self.download_driver_btn.clicked.connect(self.download_driver)
