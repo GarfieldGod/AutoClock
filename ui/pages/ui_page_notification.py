@@ -11,11 +11,11 @@ class NotificationPage(AutoClockPageContent):
         super(NotificationPage, self).__init__(y, x)
 
     def init_container(self):
-        email = EmailContainer(3, 2)
-        self.add_container(email, 0,0)
+        email = EmailContainer(6, 3)
+        self.add_container(email, 0, 0)
 
-        timing = SendTimeContainer(3,2)
-        self.add_container(timing, 2,0)
+        timing = SendTimeContainer(6, 2)
+        self.add_container(timing, 3, 0)
 
         self.input_save_widget = [
             email.notification_email,

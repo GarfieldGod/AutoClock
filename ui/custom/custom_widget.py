@@ -24,10 +24,50 @@ class LineEdit(QLineEdit):
         self.setText(str(value))
 
 
-class PasswordLineEdit(LineEdit):
+class PasswordLineEdit(QWidget):
     def __init__(self, key, default="", parent=None):
-        super(PasswordLineEdit, self).__init__(key, default=default, parent=parent)
-        self.setEchoMode(QLineEdit.Password)
+        super(PasswordLineEdit, self).__init__(parent)
+        self.key = key
+        self.default = default
+
+        self._line = QLineEdit()
+        self._line.setEchoMode(QLineEdit.Password)
+
+        self._btn = QPushButton()
+        self._btn.setFixedSize(24, 24)
+        self._btn.setStyleSheet("border: none; background-color: transparent;")
+        self._btn.setText("\U0001F512")
+        self._btn.setToolTip("\u663E\u793A\u5BC6\u7801")
+        self._btn.clicked.connect(self._toggle_visibility)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._line, 1)
+        layout.addWidget(self._btn)
+
+        self._set_func = None
+        self._line.textChanged.connect(self._on_text_changed)
+
+    def _on_text_changed(self):
+        if self._set_func is not None:
+            self._set_func(self.key, self._line.text())
+
+    def _toggle_visibility(self):
+        if self._line.echoMode() == QLineEdit.Password:
+            self._line.setEchoMode(QLineEdit.Normal)
+            self._btn.setText("\U0001F441")
+            self._btn.setToolTip("\u9690\u85CF\u5BC6\u7801")
+        else:
+            self._line.setEchoMode(QLineEdit.Password)
+            self._btn.setText("\U0001F512")
+            self._btn.setToolTip("\u663E\u793A\u5BC6\u7801")
+
+    def value_changed_func(self, set_func):
+        self._set_func = set_func
+
+    def set_value(self, value):
+        self._line.setText(str(value) if value is not None else "")
 
 
 class FileSelectLineEdit(QWidget):

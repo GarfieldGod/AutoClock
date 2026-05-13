@@ -88,6 +88,12 @@ class ConfigWindow(QMainWindow):
         self.sender_email = QLineEdit_()
         self.sender_auth_code = QLineEdit_()
         self.sender_auth_code.setEchoMode(QLineEdit_.Password)
+        self.show_auth_code_btn = QPushButton()
+        self.show_auth_code_btn.setFixedSize(24, 24)
+        self.show_auth_code_btn.setStyleSheet("border: none; background-color: transparent;")
+        self.show_auth_code_btn.setText("\U0001F512")
+        self.show_auth_code_btn.setToolTip("\u663E\u793A\u5BC6\u7801")
+        self.show_auth_code_btn.clicked.connect(self.toggle_auth_code_visibility)
         self.captcha_tolerance_angle = QLineEdit()
         self.driver_path = QLineEdit()
         
@@ -187,10 +193,17 @@ class ConfigWindow(QMainWindow):
         for r, (label, widget) in enumerate([
             ("Notification Email:", self.notification_email),
             ("Sender Email:", self.sender_email),
-            ("Auth Code:", self.sender_auth_code),
         ]):
             grid.addWidget(QLabel(label), r, 0)
             grid.addWidget(widget, r, 1)
+
+        grid.addWidget(QLabel("Auth Code:"), 2, 0)
+        auth_code_container = QWidget()
+        auth_code_layout = QHBoxLayout(auth_code_container)
+        auth_code_layout.setContentsMargins(0, 0, 0, 0)
+        auth_code_layout.addWidget(self.sender_auth_code, 1)
+        auth_code_layout.addWidget(self.show_auth_code_btn)
+        grid.addWidget(auth_code_container, 2, 1)
 
         grid.addWidget(QLabel("SMTP Server:"), 3, 0)
         smtp_row = QHBoxLayout()
@@ -428,6 +441,16 @@ class ConfigWindow(QMainWindow):
             self.user_password.setEchoMode(QLineEdit.Password)
             self.show_password_btn.setText("🔒")
             self.show_password_btn.setToolTip("显示密码")
+
+    def toggle_auth_code_visibility(self):
+        if self.sender_auth_code.echoMode() == QLineEdit.Password:
+            self.sender_auth_code.setEchoMode(QLineEdit.Normal)
+            self.show_auth_code_btn.setText("👁")
+            self.show_auth_code_btn.setToolTip("隐藏密码")
+        else:
+            self.sender_auth_code.setEchoMode(QLineEdit.Password)
+            self.show_auth_code_btn.setText("🔒")
+            self.show_auth_code_btn.setToolTip("显示密码")
             
     def download_driver(self):
         """手动下载Edge Driver"""
