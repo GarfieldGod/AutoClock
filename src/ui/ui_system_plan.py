@@ -46,7 +46,7 @@ _BTN_SECONDARY = """
 class SystemPlanDialog(QDialog):
     trigger_types = [Key.Once, Key.Multiple, Key.Daily, Key.Weekly, Key.Monthly, Key.SmartHoliday]
     day_time_types = [Key.Specify, Key.Random]
-    operation_types = [Key.AutoClock, Key.ShutDownSystem, Key.SystemSleep, Key.DisconnectNetwork, Key.ConnectNetwork]
+    operation_types = [Key.AutoClock, Key.DailyReport, Key.ShutDownSystem, Key.SystemSleep, Key.DisconnectNetwork, Key.ConnectNetwork]
 
     def __init__(self, parent=None):
         super().__init__(parent)

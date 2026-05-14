@@ -34,7 +34,8 @@ class AutoClockWindow(MainWindow):
             show_max_button=False,
             window_size=QSize(800, 600),
             icon_path=os.path.join(os.path.join(os.path.join(AppPath.UiResourcePath, "image")), "app_icon.png"),
-            icon_size=QSize(90, 120)
+            icon_size=QSize(90, 120),
+            space_width=20,
         )
 
         self.save_data = {}

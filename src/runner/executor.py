@@ -8,6 +8,7 @@ from datetime import datetime, date
 import chinese_calendar as calendar
 
 from src.core.clock_manager import run_clock
+from src.core.daily_report.manager import run_daily_report
 from src.extend.email_server import send_email_by_result
 from src.utils.const import AppPath, Key
 from src.utils.log import Log
@@ -142,6 +143,8 @@ def run_task_by_id(task_id: str, headless: bool = False):
 
         if operation == Key.AutoClock:
             ok, error = run_clock(show_web_page_override=(False if headless else None))
+        elif operation == Key.DailyReport:
+            ok, error = run_daily_report(show_web_page_override=(False if headless else None))
         elif operation == Key.ShutDownSystem:
             if os.name == 'nt':
                 from src.extend.auto_windows_operation import run_windows_shutdown

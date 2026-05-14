@@ -62,11 +62,21 @@ class Key:
     ShowWebPage: str = "show_web_page"
 
     AutoClock: str = "Auto Clock"
+    DailyReport: str = "Daily Report"
     ShutDownSystem: str = "Shut Down"
     SystemSleep: str = "Sleep"
     # 新增断网和联网操作类型
     DisconnectNetwork: str = "Disconnect Network"
     ConnectNetwork: str = "Connect Network"
+
+    # Daily Report 配置键
+    ReportWorkDescription: str = "report_work_description"
+    ReportNormalWorkload: str = "report_normal_workload"
+    ReportOvertimeWorkload: str = "report_overtime_workload"
+    ReportProjectName: str = "report_project_name"
+    ReportProjectTask: str = "report_project_task"
+    ReportActivityType: str = "report_activity_type"
+    ReportProjectType: str = "report_project_type"
 
     DefaultSystemPlanName: str = "AutoClock_System_Plan"
     DefaultLinuxPlanName: str = "AutoClock_Linux_Plan"
@@ -157,6 +167,8 @@ class WebPath:
     AppLinuxDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-{version}-linux.tar.gz"
     NeusoftKQPath: str = "https://kq.neusoft.com/"
     NeusoftKQLoginPath: str = "https://kq.neusoft.com/login"
+    NeusoftCPSPath: str = "http://cps.neusoft.com"
+    NeusoftCPSSSOPath: str = "http://cpssso.neusoft.com/auth/login"
     LinuxRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-runner-{version}-linux.tar.gz"
     LocalWindowsRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-runner-{version}-windows.zip"
     LocalLinuxRunnerDownloadUrlTemplate: str = "https://github.com/GarfieldGod/auto-clock/releases/download/v{version}/auto-clock-runner-{version}-linux.tar.gz"

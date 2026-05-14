@@ -1,6 +1,6 @@
 from PyQt5.QtCore import Qt, QRectF, QSizeF, QPropertyAnimation, QSize
 from PyQt5.QtGui import QPainter, QPainterPath, QColor, QPixmap
-from PyQt5.QtWidgets import QWidget, QLabel, QHBoxLayout, QGridLayout, QSizePolicy, QStackedWidget
+from PyQt5.QtWidgets import QWidget, QLabel, QHBoxLayout, QVBoxLayout, QGridLayout, QSizePolicy, QStackedWidget, QScrollArea, QFrame
 
 from ui.template.ui_custom_color import CustomColor
 from ui.template.ui_custom_function import load_local_image
@@ -135,12 +135,17 @@ class PageContent(QWidget):
         self.rows = rows
         self.columns = columns
 
-        self.grid = QGridLayout(self)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll_area.setFrameShape(QFrame.NoFrame)
+
+        content_widget = QWidget()
+        self.grid = QGridLayout(content_widget)
         self.grid.setSpacing(self.page_spacing)
         self.grid.setContentsMargins(0, 0, 0, 0)
 
-        for row in range(self.rows):
-            self.grid.setRowStretch(row, 1)
         for col in range(self.columns):
             self.grid.setColumnStretch(col, 1)
 
@@ -164,6 +169,12 @@ class PageContent(QWidget):
 
         self.init_container()
 
+        self.scroll_area.setWidget(content_widget)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(self.scroll_area)
+
     def add_container(self, container, pos_row, pos_col):
         if not isinstance(container, Container):
             print("This is not a Container")
@@ -177,14 +188,7 @@ class PageContent(QWidget):
             print(f"警告: 跨度 ({row_span}x{col_span}) 在位置 ({pos_row}, {pos_col}) 处超出网格范围。剩余：高{self.rows - pos_row} 宽{self.columns - pos_col}。")
             return
 
-        container.setSizePolicy(
-            container.sizePolicy().horizontalPolicy() & ~container.sizePolicy().Expanding,
-            container.sizePolicy().verticalPolicy() & ~container.sizePolicy().Expanding
-        )
-        container.setSizePolicy(
-            container.sizePolicy().horizontalPolicy() | container.sizePolicy().Ignored,
-            container.sizePolicy().verticalPolicy() | container.sizePolicy().Ignored
-        )
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         self.grid.addWidget(container, pos_row, pos_col, row_span, col_span)
         print(f"在第{pos_row}行，第{pos_col}列，新增container，占用{col_span}列（宽度 {container.size().width()}），{row_span}行（高度 {container.size().height()}）")

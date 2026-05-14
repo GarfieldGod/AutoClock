@@ -26,6 +26,9 @@ class ClockPage(AutoClockPageContent):
         web = WebDriverContainer(6 - user_width,user_height)
         self.add_container(web, 0,user_width)
 
+        report = DailyReportContainer(6, 4)
+        self.add_container(report, 5, 0)
+
         self.input_save_widget = [
             user.user_name,
             user.user_password,
@@ -35,7 +38,15 @@ class ClockPage(AutoClockPageContent):
             cap.always_retry_check_box,
             cap.show_web_page,
 
-            web.driver_path
+            web.driver_path,
+
+            report.work_description,
+            report.normal_workload,
+            report.overtime_workload,
+            report.project_name,
+            report.project_task,
+            report.activity_type,
+            report.project_type,
         ]
 
 
@@ -215,3 +226,55 @@ class CaptchaContainer(AutoClockContainer):
 
         layout_container = QVBoxLayout(self)
         layout_container.addWidget(group_captcha)
+
+
+class DailyReportContainer(AutoClockContainer):
+    def __init__(self, x, y):
+        super(DailyReportContainer, self).__init__(x, y)
+
+        row_style = "QLineEdit { min-height: 26px; font-size: 13px; padding: 2px 6px; }"
+
+        self.work_description = LineEdit(Key.ReportWorkDescription)
+        self.work_description.setStyleSheet(row_style)
+        self.normal_workload = LineEdit(Key.ReportNormalWorkload)
+        self.normal_workload.setStyleSheet(row_style)
+        self.overtime_workload = LineEdit(Key.ReportOvertimeWorkload)
+        self.overtime_workload.setStyleSheet(row_style)
+        self.project_name = LineEdit(Key.ReportProjectName)
+        self.project_name.setStyleSheet(row_style)
+        self.project_task = LineEdit(Key.ReportProjectTask)
+        self.project_task.setStyleSheet(row_style)
+        self.activity_type = LineEdit(Key.ReportActivityType)
+        self.activity_type.setStyleSheet(row_style)
+        self.project_type = LineEdit(Key.ReportProjectType)
+        self.project_type.setStyleSheet(row_style)
+
+        self.init_ui_layout()
+
+    def init_ui_layout(self):
+        group = QGroupBox("Daily Report Template")
+        group.setStyleSheet(get_group_css({"Text_Color": "#1976D2"}))
+        layout = QVBoxLayout(group)
+
+        fields = [
+            ("Work Description:", self.work_description),
+            ("Normal Workload:", self.normal_workload),
+            ("Overtime Workload:", self.overtime_workload),
+            ("Project Name:", self.project_name),
+            ("Project Task:", self.project_task),
+            ("Activity Type:", self.activity_type),
+            ("Project Type:", self.project_type),
+        ]
+
+        for label_text, widget in fields:
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 2, 0, 2)
+            label = QLabel(label_text)
+            label.setFixedWidth(160)
+            row.addWidget(label)
+            row.addWidget(widget, 1)
+            layout.addLayout(row)
+
+        layout.addStretch()
+        container_layout = QVBoxLayout(self)
+        container_layout.addWidget(group)

@@ -30,7 +30,7 @@ def init_page_list(w):
         ico=os.path.join(image_path, "clock_icon.png"),
         image_size=icon_size
     )
-    con_clock = ClockPage(6,6)
+    con_clock = ClockPage(9,6)
     w.add_page(nav_clock, con_clock)
 
     nav_notification = PageNavigation(
