@@ -48,6 +48,11 @@ class Key:
     SendEmailWhenSuccess: str = "send_email_success"
     SendEmailWhenFailed: str = "send_email_failed"
 
+    SmtpServer: str = "smtp_server"
+    SmtpPort: str = "smtp_port"
+    SenderEmail: str = "sender_email"
+    SenderAuthCode: str = "sender_auth_code"
+
     UserName: str = "user_name"
     UserPassword: str = "user_password"
     DriverPath: str = "driver_path"

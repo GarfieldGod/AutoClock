@@ -16,10 +16,10 @@ class ToolSettingsPage(AutoClockPageContent):
         super(ToolSettingsPage, self).__init__(y, x)
 
     def init_container(self):
-        tool_config = ToolConfigContainer(4, 2)
+        tool_config = ToolConfigContainer(6, 2)
         self.add_container(tool_config, 0, 0)
 
-        ssh_config = SshConfigContainer(4, 3)
+        ssh_config = SshConfigContainer(6, 4)
         self.add_container(ssh_config, 2, 0)
 
         self.input_save_widget = []
@@ -27,7 +27,6 @@ class ToolSettingsPage(AutoClockPageContent):
             self.input_save_widget.append(tool_config.check_linux_credentials_on_plan_create)
 
         self.input_save_widget.append(tool_config.check_update_on_startup)
-        self.input_save_widget.append(ssh_config.ssh_enabled)
         self.input_save_widget.append(ssh_config.ssh_host)
         self.input_save_widget.append(ssh_config.ssh_username)
         self.input_save_widget.append(ssh_config.ssh_password)
@@ -58,15 +57,6 @@ class ToolConfigContainer(AutoClockContainer):
         layout_tool = QVBoxLayout(group_tool)
         layout_tool.setContentsMargins(16, 14, 16, 14)
         layout_tool.setSpacing(8)
-
-        title = QLabel("General Preferences")
-        title_font = QFont()
-        title_font.setPointSize(10)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        title.setStyleSheet("color:#374151;")
-        title.setMinimumHeight(18)
-        layout_tool.addWidget(title)
 
         if platform.system() == 'Linux':
             label = QLabel("Validate account settings before creating Linux system plans")
@@ -112,7 +102,6 @@ class ToolConfigContainer(AutoClockContainer):
         )
 
         layout_container = QVBoxLayout(self)
-        layout_container.setContentsMargins(0, 0, 0, 0)
         layout_container.addWidget(group_tool)
 
         self.btn_check_update.clicked.connect(self._on_check_update_clicked)
@@ -134,7 +123,6 @@ class SshConfigContainer(AutoClockContainer):
     def __init__(self, x, y):
         super(SshConfigContainer, self).__init__(x, y)
 
-        self.ssh_enabled = CheckBox(Key.SshEnabled, default=False)
         self.ssh_host = LineEdit(Key.SshHost, default="")
         self.ssh_username = LineEdit(Key.SshUsername, default="")
         self.ssh_password = PasswordLineEdit(Key.SshPassword, default="")
@@ -147,8 +135,9 @@ class SshConfigContainer(AutoClockContainer):
             platform_items = ["---"]
         self.ssh_server_platform = ComboBox(Key.SshServerPlatform, items=platform_items, default="---")
 
-        self.btn_connect = QPushButton("Connect")
-        self.btn_disconnect = QPushButton("Disconnect")
+        self.btn_connect = QPushButton()
+        self._connected = False
+        self._apply_connect_button_state()
 
         self.init_ui_layout()
 
@@ -157,13 +146,9 @@ class SshConfigContainer(AutoClockContainer):
         group.setStyleSheet(get_group_css({"BackGround_Color": "#fbfbfd", "Border_Color": "#cfd6e0"}))
         group.setMinimumWidth(390)
         layout = QVBoxLayout(group)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 4, 14, 12)
+        layout.setSpacing(6)
 
-        tip = QLabel("Use SSH to manage tasks on a remote Linux host")
-        tip.setStyleSheet("color:#4b5563;")
-        tip.setWordWrap(True)
-        layout.addWidget(tip)
 
         def _add_row(text: str, widget):
             row = QHBoxLayout()
@@ -175,7 +160,6 @@ class SshConfigContainer(AutoClockContainer):
             row.addWidget(widget, stretch=1)
             layout.addLayout(row)
 
-        _add_row("Enable SSH", self.ssh_enabled)
         _add_row("Target Platform", self.ssh_server_platform)
         _add_row("IP", self.ssh_host)
         _add_row("Username", self.ssh_username)
@@ -193,81 +177,42 @@ class SshConfigContainer(AutoClockContainer):
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
-        btn_row.addWidget(self.btn_connect)
-        btn_row.addWidget(self.btn_disconnect)
         btn_row.addStretch(1)
+        btn_row.addWidget(self.btn_connect)
         layout.addLayout(btn_row)
 
         self.btn_connect.setCursor(Qt.PointingHandCursor)
-        self.btn_disconnect.setCursor(Qt.PointingHandCursor)
         self.btn_connect.setFixedHeight(28)
-        self.btn_disconnect.setFixedHeight(28)
-        self.btn_connect.setStyleSheet(
-            "QPushButton {"
-            "background-color:#059669; color:white; border:1px solid #047857;"
-            "border-radius:6px; padding:0 12px; font-weight:600; }"
-            "QPushButton:hover { background-color:#047857; }"
-            "QPushButton:pressed { background-color:#065f46; }"
-        )
-        self.btn_disconnect.setStyleSheet(
-            "QPushButton {"
-            "background-color:#6b7280; color:white; border:1px solid #4b5563;"
-            "border-radius:6px; padding:0 12px; font-weight:600; }"
-            "QPushButton:hover { background-color:#4b5563; }"
-            "QPushButton:pressed { background-color:#374151; }"
-        )
 
         layout_container = QVBoxLayout(self)
-        layout_container.setContentsMargins(0, 0, 0, 0)
         layout_container.addWidget(group)
 
-        self.btn_connect.clicked.connect(self._on_connect_clicked)
-        self.btn_disconnect.clicked.connect(self._on_disconnect_clicked)
+        self.btn_connect.clicked.connect(self._on_toggle_clicked)
 
-    def _on_connect_clicked(self):
-        try:
-            w = self.window()
-
-            if platform.system() == "Windows":
-                if str(self.ssh_server_platform.currentText()).strip() != "Linux":
-                    from src.ui.ui_message import MessageBox
-                    MessageBox("Please select a valid target platform first")
-                    self._update_lock_state(False)
-                    return
-
-            if hasattr(w, "connect_remote_and_reload"):
-                ok, err = w.connect_remote_and_reload()
-                if not ok:
-                    from src.ui.ui_message import MessageBox
-                    MessageBox(f"Connect failed: {err or ''}")
-                    self._update_lock_state(False)
-                else:
-                    self._update_lock_state(True)
-            else:
-                from src.ui.ui_message import MessageBox
-                MessageBox("Current window does not support SSH connection")
-        except Exception as e:
-            from src.ui.ui_message import MessageBox
-            MessageBox(f"Connect error: {e}")
-            self._update_lock_state(False)
-
-    def _on_disconnect_clicked(self):
-        try:
-            w = self.window()
-            if hasattr(w, "disconnect_remote_and_reload"):
-                w.disconnect_remote_and_reload()
-                self._update_lock_state(False)
-            else:
-                from src.ui.ui_message import MessageBox
-                MessageBox("Current window does not support SSH disconnect")
-        except Exception as e:
-            from src.ui.ui_message import MessageBox
-            MessageBox(f"Disconnect error: {e}")
+    def _apply_connect_button_state(self):
+        if self._connected:
+            self.btn_connect.setText("Disconnect")
+            self.btn_connect.setStyleSheet(
+                "QPushButton {"
+                "background-color:#6b7280; color:white; border:1px solid #4b5563;"
+                "border-radius:6px; padding:0 12px; font-weight:600; }"
+                "QPushButton:hover { background-color:#4b5563; }"
+                "QPushButton:pressed { background-color:#374151; }"
+            )
+        else:
+            self.btn_connect.setText("Connect")
+            self.btn_connect.setStyleSheet(
+                "QPushButton {"
+                "background-color:#059669; color:white; border:1px solid #047857;"
+                "border-radius:6px; padding:0 12px; font-weight:600; }"
+                "QPushButton:hover { background-color:#047857; }"
+                "QPushButton:pressed { background-color:#065f46; }"
+            )
 
     def _update_lock_state(self, connected: bool):
-        # 连接成功后锁定配置，避免连接过程中修改 host/user 等导致状态混乱
+        self._connected = connected
+        self._apply_connect_button_state()
         for w in [
-            self.ssh_enabled,
             self.ssh_server_platform,
             self.ssh_host,
             self.ssh_username,
@@ -280,8 +225,34 @@ class SshConfigContainer(AutoClockContainer):
             except Exception:
                 pass
 
+    def _on_toggle_clicked(self):
         try:
-            self.btn_connect.setEnabled(not connected)
-            self.btn_disconnect.setEnabled(connected)
-        except Exception:
-            pass
+            w = self.window()
+            if self._connected:
+                if hasattr(w, "disconnect_remote_and_reload"):
+                    w.disconnect_remote_and_reload()
+                    self._update_lock_state(False)
+                else:
+                    from src.ui.ui_message import MessageBox
+                    MessageBox("Current window does not support SSH disconnect")
+            else:
+                if platform.system() == "Windows":
+                    if str(self.ssh_server_platform.currentText()).strip() != "Linux":
+                        from src.ui.ui_message import MessageBox
+                        MessageBox("Please select a valid target platform first")
+                        return
+
+                if hasattr(w, "connect_remote_and_reload"):
+                    ok, err = w.connect_remote_and_reload()
+                    if not ok:
+                        from src.ui.ui_message import MessageBox
+                        MessageBox(f"Connect failed: {err or ''}")
+                    else:
+                        self._update_lock_state(True)
+                else:
+                    from src.ui.ui_message import MessageBox
+                    MessageBox("Current window does not support SSH connection")
+        except Exception as e:
+            from src.ui.ui_message import MessageBox
+            MessageBox(f"Error: {e}")
+            self._update_lock_state(False)

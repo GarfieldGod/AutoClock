@@ -60,7 +60,7 @@ def send_email_by_auto_clock(receiver_email, subject, title, hello, message, ok)
     ret, error = send_email(email_info)
     return ret, error
 
-def send_email_by_result(task, email, send_email_success, send_email_failed, ok, error):
+def send_email_by_result(task, email, send_email_success, send_email_failed, ok, error, config_data=None):
     if not task or not email: return
     if not send_email_success and not send_email_failed: return
 
@@ -82,7 +82,31 @@ def send_email_by_result(task, email, send_email_success, send_email_failed, ok,
     Log.info(f"ip_info: {ip_info}")
 
     message = get_info_html(task, device_info, ip_info)
-    send_email_by_auto_clock(receiver_email=email, subject=subject, title=title, hello=hello, message=message, ok=ok)
+
+    cfg = config_data if isinstance(config_data, dict) else {}
+    smtp_server = cfg.get(Key.SmtpServer)
+    smtp_port = cfg.get(Key.SmtpPort)
+    sender_email = cfg.get(Key.SenderEmail)
+    sender_auth_code = cfg.get(Key.SenderAuthCode)
+
+    Log.info(f"email config_data keys: {list(cfg.keys())}")
+    if not (smtp_server and smtp_port and sender_email and sender_auth_code):
+        Log.info(f"SMTP not configured — server={smtp_server} port={smtp_port} sender={sender_email} auth_code={'*' if sender_auth_code else None}")
+        return False, "SMTP not configured"
+    Log.info(f"Sending email via {sender_email} @ {smtp_server}:{smtp_port}")
+    email_info = {
+        "smtp_server": smtp_server,
+        "smtp_port": int(smtp_port),
+        "sender_email": sender_email,
+        "sender_auth_code": sender_auth_code,
+        "receiver_email": email,
+        "subject": subject,
+        "title": title,
+        "hello": hello,
+        "message": message,
+        "success": ok,
+    }
+    return send_email(email_info)
 
 def html_content(content_title, hello, message, success):
     content = f"""

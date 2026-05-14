@@ -7,12 +7,13 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt, QDate, QSize
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QDialog, QGroupBox,
-    QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QCheckBox,
+    QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit, QListWidget, QCheckBox,
     QPushButton, QSizePolicy, QListWidgetItem
 )
 
 from src.utils.log import Log
 from src.utils.const import Key, AppPath, WebPath
+from PyQt5.QtWidgets import QLineEdit as QLineEdit_
 from src.ui.ui_message import MessageBox
 from src.utils.update import VersionCheckThread
 from src.utils.utils import Utils
@@ -82,6 +83,17 @@ class ConfigWindow(QMainWindow):
         self.show_password_btn.clicked.connect(self.toggle_password_visibility)
         self.captcha_retry_times = QLineEdit()
         self.notification_email = QLineEdit()
+        self.smtp_server = QLineEdit_()
+        self.smtp_port = QLineEdit_()
+        self.sender_email = QLineEdit_()
+        self.sender_auth_code = QLineEdit_()
+        self.sender_auth_code.setEchoMode(QLineEdit_.Password)
+        self.show_auth_code_btn = QPushButton()
+        self.show_auth_code_btn.setFixedSize(24, 24)
+        self.show_auth_code_btn.setStyleSheet("border: none; background-color: transparent;")
+        self.show_auth_code_btn.setText("\U0001F512")
+        self.show_auth_code_btn.setToolTip("\u663E\u793A\u5BC6\u7801")
+        self.show_auth_code_btn.clicked.connect(self.toggle_auth_code_visibility)
         self.captcha_tolerance_angle = QLineEdit()
         self.driver_path = QLineEdit()
         
@@ -171,24 +183,51 @@ class ConfigWindow(QMainWindow):
         # Notification Config
         group_notification = QGroupBox("Notification Config")
         group_notification.setStyleSheet(self.get_group_css({}))
-        layout_notification = QVBoxLayout(group_notification)
+        layout = QVBoxLayout(group_notification)
+        layout.setSpacing(10)
+        layout.setContentsMargins(12, 16, 12, 12)
 
-        layout_email = QVBoxLayout()
-        layout_email.addWidget(QLabel("Notification Email:"))
-        layout_email.addWidget(self.notification_email)
+        grid = QGridLayout()
+        grid.setSpacing(8)
 
-        layout_send_email = QHBoxLayout()
-        layout_send_email.addWidget(QLabel("Send Email When:"))
-        layout_send_email.addStretch()
-        layout_send_email_checkbox = QHBoxLayout()
-        layout_send_email_checkbox.addWidget(QLabel("Failed"))
-        layout_send_email_checkbox.addWidget(self.send_email_failed)
-        layout_send_email_checkbox.addWidget(QLabel("Success"))
-        layout_send_email_checkbox.addWidget(self.send_email_success)
-        layout_send_email.addLayout(layout_send_email_checkbox)
-        layout_send_email.addStretch()
-        layout_notification.addLayout(layout_email)
-        layout_notification.addLayout(layout_send_email)
+        for r, (label, widget) in enumerate([
+            ("Notification Email:", self.notification_email),
+            ("Sender Email:", self.sender_email),
+        ]):
+            grid.addWidget(QLabel(label), r, 0)
+            grid.addWidget(widget, r, 1)
+
+        grid.addWidget(QLabel("Auth Code:"), 2, 0)
+        auth_code_container = QWidget()
+        auth_code_layout = QHBoxLayout(auth_code_container)
+        auth_code_layout.setContentsMargins(0, 0, 0, 0)
+        auth_code_layout.addWidget(self.sender_auth_code, 1)
+        auth_code_layout.addWidget(self.show_auth_code_btn)
+        grid.addWidget(auth_code_container, 2, 1)
+
+        grid.addWidget(QLabel("SMTP Server:"), 3, 0)
+        smtp_row = QHBoxLayout()
+        smtp_row.addWidget(self.smtp_server, 1)
+        smtp_row.addSpacing(4)
+        smtp_row.addWidget(QLabel("Port:"))
+        smtp_row.addSpacing(4)
+        smtp_row.addWidget(self.smtp_port)
+        grid.addLayout(smtp_row, 3, 1)
+
+        grid.setColumnStretch(1, 1)
+        layout.addLayout(grid)
+
+        send_row = QHBoxLayout()
+        send_row.addWidget(QLabel("Send Email When:"))
+        send_row.addStretch()
+        cb = QHBoxLayout()
+        cb.addWidget(QLabel("Failed"))
+        cb.addWidget(self.send_email_failed)
+        cb.addWidget(QLabel("Success"))
+        cb.addWidget(self.send_email_success)
+        send_row.addLayout(cb)
+        send_row.addStretch()
+        layout.addLayout(send_row)
 
         # 系统配置 - 根据操作系统显示不同的配置选项
         system_name = platform.system()
@@ -323,6 +362,14 @@ class ConfigWindow(QMainWindow):
         }
         if self.notification_email.text() != Key.Empty:
             data[Key.NotificationEmail] = self.notification_email.text()
+        if self.smtp_server.text() != Key.Empty:
+            data[Key.SmtpServer] = self.smtp_server.text()
+        if self.smtp_port.text() != Key.Empty:
+            data[Key.SmtpPort] = self.smtp_port.text()
+        if self.sender_email.text() != Key.Empty:
+            data[Key.SenderEmail] = self.sender_email.text()
+        if self.sender_auth_code.text() != Key.Empty:
+            data[Key.SenderAuthCode] = self.sender_auth_code.text()
         if retry_times is not None:
             data[Key.CaptchaRetryTimes] = retry_times
         if tolerance_angle is not None:
@@ -361,6 +408,10 @@ class ConfigWindow(QMainWindow):
             self.send_email_failed.setChecked(data.get(Key.SendEmailWhenFailed, False))
             self.send_email_success.setChecked(data.get(Key.SendEmailWhenSuccess, False))
             self.notification_email.setText(data.get(Key.NotificationEmail, Key.Empty))
+            self.smtp_server.setText(data.get(Key.SmtpServer, Key.Empty))
+            self.smtp_port.setText(data.get(Key.SmtpPort, Key.Empty))
+            self.sender_email.setText(data.get(Key.SenderEmail, Key.Empty))
+            self.sender_auth_code.setText(data.get(Key.SenderAuthCode, Key.Empty))
 
             driver_path = data.get(Key.DriverPath, Key.Empty)
             self.driver_path.setText(driver_path)
@@ -390,6 +441,16 @@ class ConfigWindow(QMainWindow):
             self.user_password.setEchoMode(QLineEdit.Password)
             self.show_password_btn.setText("🔒")
             self.show_password_btn.setToolTip("显示密码")
+
+    def toggle_auth_code_visibility(self):
+        if self.sender_auth_code.echoMode() == QLineEdit.Password:
+            self.sender_auth_code.setEchoMode(QLineEdit.Normal)
+            self.show_auth_code_btn.setText("👁")
+            self.show_auth_code_btn.setToolTip("隐藏密码")
+        else:
+            self.sender_auth_code.setEchoMode(QLineEdit.Password)
+            self.show_auth_code_btn.setText("🔒")
+            self.show_auth_code_btn.setToolTip("显示密码")
             
     def download_driver(self):
         """手动下载Edge Driver"""

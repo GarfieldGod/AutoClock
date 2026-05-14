@@ -1,8 +1,38 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QIcon
-from PyQt5.QtWidgets import QDialogButtonBox, QHBoxLayout, QVBoxLayout, QLabel, QDialog, QPushButton
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel, QDialog, QPushButton
 
 from src.utils.utils import Utils
+
+
+_DIALOG_STYLE = """
+    QDialog {
+        background-color: #ffffff;
+        border-radius: 12px;
+    }
+"""
+
+_BTN_PRIMARY = """
+    QPushButton {
+        background-color: #2563eb; color: white;
+        border: none; border-radius: 6px;
+        padding: 8px 20px; font-weight: 600; font-size: 13px;
+        min-width: 80px;
+    }
+    QPushButton:hover { background-color: #1d4ed8; }
+    QPushButton:pressed { background-color: #1e40af; }
+"""
+
+_BTN_SECONDARY = """
+    QPushButton {
+        background-color: #ffffff; color: #374151;
+        border: 1px solid #d1d5db; border-radius: 6px;
+        padding: 8px 20px; font-weight: 600; font-size: 13px;
+        min-width: 80px;
+    }
+    QPushButton:hover { background-color: #f3f4f6; border-color: #9ca3af; }
+    QPushButton:pressed { background-color: #e5e7eb; }
+"""
 
 
 class _MessageDialog(QDialog):
@@ -10,6 +40,8 @@ class _MessageDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(message_name)
         self.setWindowIcon(QIcon(Utils.get_ico_path()))
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setStyleSheet(_DIALOG_STYLE)
 
         self.clicked_button_text = None
 
@@ -19,7 +51,10 @@ class _MessageDialog(QDialog):
         font.setPointSize(10)
         label.setFont(font)
         label.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-        # 允许文本选择和复制
+        label.setWordWrap(True)
+        label.setMinimumWidth(300)
+        label.setMaximumWidth(500)
+        label.setStyleSheet("color:#374151; padding:12px 8px;")
         label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
 
         layout_center_label = QHBoxLayout()
@@ -31,24 +66,32 @@ class _MessageDialog(QDialog):
         layout_center_button.addStretch(1)
 
         if buttons is not None and isinstance(buttons, (list, tuple)) and len(buttons) > 0:
-            # 自定义按钮列表
-            for text in buttons:
+            for i, text in enumerate(buttons):
                 btn = QPushButton(str(text))
+                btn.setStyleSheet(_BTN_PRIMARY if i == 0 else _BTN_SECONDARY)
                 btn.clicked.connect(lambda checked, t=text: self._on_custom_button_clicked(t))
                 layout_center_button.addWidget(btn)
         else:
-            # 兼容原有的 Ok / Ok+Cancel 模式
             if need_check:
-                button = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-                button.rejected.connect(self.reject)
+                ok_btn = QPushButton("OK")
+                ok_btn.setStyleSheet(_BTN_PRIMARY)
+                cancel_btn = QPushButton("Cancel")
+                cancel_btn.setStyleSheet(_BTN_SECONDARY)
+                ok_btn.clicked.connect(self.accept)
+                cancel_btn.clicked.connect(self.reject)
+                layout_center_button.addWidget(ok_btn)
+                layout_center_button.addWidget(cancel_btn)
             else:
-                button = QDialogButtonBox(QDialogButtonBox.Ok)
-            button.accepted.connect(self.accept)
-            layout_center_button.addWidget(button)
+                ok_btn = QPushButton("OK")
+                ok_btn.setStyleSheet(_BTN_PRIMARY)
+                ok_btn.clicked.connect(self.accept)
+                layout_center_button.addWidget(ok_btn)
 
         layout_center_button.addStretch(1)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
         layout.addStretch()
         layout.addLayout(layout_center_label)
         layout.addStretch()
@@ -60,23 +103,12 @@ class _MessageDialog(QDialog):
 
 
 def MessageBox(message, message_name="Message", parent=None, need_check=False, message_only=True, buttons=None):
-    """通用消息框工具
-
-    行为兼容旧代码：
-    - 无 buttons:
-        - message_only=True: 立即显示对话框并阻塞，返回对话框对象（通常被忽略）。
-        - message_only=False: 返回对话框对象，由调用方自行调用 exec_()。
-    - 有 buttons（列表）:
-        - 立即显示对话框并阻塞，返回用户点击的按钮文本（str）。
-    """
     dlg = _MessageDialog(message, message_name=message_name, parent=parent, need_check=need_check, buttons=buttons)
 
     if buttons is not None and isinstance(buttons, (list, tuple)) and len(buttons) > 0:
-        # 选择型对话框：返回所选按钮文本
         dlg.exec_()
         return dlg.clicked_button_text
 
-    # 保持原有语义：message_only=True 时在内部立即 exec
     if message_only:
         dlg.exec_()
 

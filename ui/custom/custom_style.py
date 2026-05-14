@@ -23,17 +23,19 @@ def get_group_css(css_data):
             background-color: {background_color};
             color: {text_color};
             border: {border_width} solid {border_color};
-            border-radius: 5px;
-            margin-top: 10px;
+            border-radius: 10px;
+            margin-top: 12px;
+            padding-top: 8px;
         }}
         QGroupBox:title {{
             font-family: "Microsoft YaHei", "SimHei", sans-serif;
             font-weight: bold;
-            font-size: 24px;
+            font-size: 18px;
+            color: #1f2937;
             subcontrol-origin: margin;
             subcontrol-position: top left;
-            left: 10px;
-            padding: 0 5px 0 5px;
+            left: 14px;
+            padding: 0 8px 0 8px;
         }}
     """
     return css
