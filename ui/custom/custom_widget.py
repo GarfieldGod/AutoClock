@@ -13,6 +13,8 @@ class LineEdit(QLineEdit):
         super(LineEdit, self).__init__(parent)
         self.key = key
         self.default = default
+        if default:
+            self.setText(str(default))
 
     def value_changed_func(self, set_func):
         try:
@@ -21,7 +23,8 @@ class LineEdit(QLineEdit):
             print(e)
 
     def set_value(self, value):
-        self.setText(str(value))
+        if value or value == 0:
+            self.setText(str(value))
 
 
 class PasswordLineEdit(QWidget):

@@ -163,8 +163,8 @@ class CaptchaContainer(AutoClockContainer):
     def __init__(self, x, y):
         super(CaptchaContainer, self).__init__(x, y)
 
-        self.captcha_retry_times = LineEdit(Key.CaptchaRetryTimes)
-        self.captcha_tolerance_angle = LineEdit(Key.CaptchaToleranceAngle)
+        self.captcha_retry_times = LineEdit(Key.CaptchaRetryTimes, default="5")
+        self.captcha_tolerance_angle = LineEdit(Key.CaptchaToleranceAngle, default="5")
 
         self.always_retry_check_box = CheckBox(Key.AlwaysRetry)
         self.show_web_page = CheckBox(Key.ShowWebPage)
