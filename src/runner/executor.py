@@ -169,6 +169,9 @@ def run_task_by_id(task_id: str, headless: bool = False):
             if ok:
                 Log.info("Network connected, wait 10 sec...")
                 time.sleep(10)
+        elif operation == Key.AutoDailyReport:
+            from src.core.daily_report.daily_report_manager import run_daily_report
+            ok, error = run_daily_report(show_web_page_override=(False if headless else None))
         else:
             error = f"No operation specified for: {operation}"
 

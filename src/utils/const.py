@@ -67,6 +67,23 @@ class Key:
     # 新增断网和联网操作类型
     DisconnectNetwork: str = "Disconnect Network"
     ConnectNetwork: str = "Connect Network"
+    AutoDailyReport: str = "Daily Report"
+
+    # Edge 浏览器 Profile 配置（已废弃，仅用于清理旧数据）
+    EdgeUserDataDir: str = "edge_user_data_dir"
+    EdgeProfileDir: str = "edge_profile_dir"
+
+    # 授权状态
+    DailyAuthorized: str = "daily_authorized"
+
+    # 日报模板字段
+    DailyWorkDesc: str = "daily_work_desc"
+    DailyNormalHours: str = "daily_normal_hours"
+    DailyOvertimeHours: str = "daily_overtime_hours"
+    DailyProjectName: str = "daily_project_name"
+    DailyTaskName: str = "daily_task_name"
+    DailyActivityType: str = "daily_activity_type"
+    DailyProjectModule: str = "daily_project_module"
 
     DefaultSystemPlanName: str = "AutoClock_System_Plan"
     DefaultLinuxPlanName: str = "AutoClock_Linux_Plan"

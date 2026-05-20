@@ -1,6 +1,6 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QFontMetrics
-from PyQt5.QtWidgets import QLineEdit, QCheckBox, QWidget, QHBoxLayout, QPushButton, QFileDialog, QComboBox, QSizePolicy, QVBoxLayout
+from PyQt5.QtWidgets import QLineEdit, QTextEdit, QCheckBox, QWidget, QHBoxLayout, QPushButton, QFileDialog, QComboBox, QSizePolicy, QVBoxLayout
 
 from src.utils.const import Key
 from src.utils.utils import Utils
@@ -139,6 +139,22 @@ class CheckBox(QCheckBox):
 
     def set_value(self, value):
         self.setChecked(value)
+
+
+class TextEdit(QTextEdit):
+    def __init__(self, key, default="", parent=None):
+        super(TextEdit, self).__init__(parent)
+        self.key = key
+        self.default = default
+        if default:
+            self.setPlainText(str(default))
+
+    def value_changed_func(self, set_func):
+        self.textChanged.connect(lambda: set_func(self.key, self.toPlainText()))
+
+    def set_value(self, value):
+        if value or value == 0:
+            self.setPlainText(str(value))
 
 
 class ComboBox(QComboBox):

@@ -18,13 +18,13 @@ class ClockPage(AutoClockPageContent):
         user_width = 3
         user_height = 2
         user = UserInfoContainer(user_width, user_height)
-        self.add_container(user, 0,0)
+        self.add_container(user, 0, 0)
 
-        cap = CaptchaContainer(3,3)
-        self.add_container(cap, user_height, 0)
+        cap = CaptchaContainer(3, user_height)
+        self.add_container(cap, 0, user_width)
 
-        web = WebDriverContainer(6 - user_width,user_height)
-        self.add_container(web, 0,user_width)
+        web = WebDriverContainer(6, 2)
+        self.add_container(web, user_height, 0)
 
         self.input_save_widget = [
             user.user_name,

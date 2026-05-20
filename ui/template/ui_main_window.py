@@ -13,7 +13,7 @@ from ui.template.element.ui_element_navigation import NavigationArea
 from ui.template.element.ui_element_space import SpaceArea
 from ui.template.element.ui_element_title import TitleBarArea
 from ui.template.ui_custom_function import get_ui_resource_path
-from ui.template.ui_page import PageContent, PageNavigation
+from ui.template.ui_page import PageNavigation
 from ui.template.ui_custom_color import CustomColor
 
 
@@ -124,7 +124,7 @@ class MainWindow(QMainWindow):
             print(f"加载 QSS 失败：{e}")
 
     def add_page(self, navigation, page):
-        if not isinstance(navigation, PageNavigation) or not isinstance(page, PageContent):
+        if not isinstance(navigation, PageNavigation) or not isinstance(page, QWidget):
             raise Exception("invalid navigation or page")
 
         navigation_item = QListWidgetItem()

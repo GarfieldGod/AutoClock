@@ -32,8 +32,8 @@ class Log:
         write("INFO", str(message))
 
     @staticmethod
-    def waring(message):
-        write("WARING", str(message))
+    def warn(message):
+        write("WARN", str(message))
 
     @staticmethod
     def error(message):

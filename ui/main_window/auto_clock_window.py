@@ -34,7 +34,8 @@ class AutoClockWindow(MainWindow):
             show_max_button=False,
             window_size=QSize(800, 600),
             icon_path=os.path.join(os.path.join(os.path.join(AppPath.UiResourcePath, "image")), "app_icon.png"),
-            icon_size=QSize(90, 120)
+            icon_size=QSize(90, 120),
+            space_width=20
         )
 
         self.save_data = {}
@@ -743,6 +744,18 @@ class AutoClockWindow(MainWindow):
                 for k in self._ssh_keys():
                     merged.pop(k, None)
 
+            # Clean up legacy daily report keys
+            _LEGACY_DAILY_KEYS = {
+                "report_work_description", "report_normal_workload", "report_overtime_workload",
+                "report_project_name", "report_project_task", "report_activity_type", "report_project_type",
+                "daily_report_work_desc", "daily_report_overtime_workload",
+                "daily_report_project_name", "daily_report_project_task",
+                "daily_report_activity_type", "daily_report_module_name",
+                Key.EdgeUserDataDir, Key.EdgeProfileDir,
+            }
+            for k in _LEGACY_DAILY_KEYS:
+                merged.pop(k, None)
+
             Utils.write_dict_to_file(AppPath.DataJson, merged)
 
             # 自动同步：连接远端时，把本地 remote_cache/data.json 写回远端 data 目录
@@ -799,8 +812,17 @@ class AutoClockWindow(MainWindow):
     def add_page(self, navigation, page):
         super().add_page(navigation, page)
 
-        if self.save_data is not None and isinstance(page, AutoClockPageContent):
-            page.set_save_data(self.set_save_data, self.get_save_data)
+        if self.save_data is not None:
+            page_content = page
+            if hasattr(page, 'widget') and callable(page.widget):
+                try:
+                    child = page.widget()
+                    if child is not None:
+                        page_content = child
+                except Exception:
+                    pass
+            if isinstance(page_content, AutoClockPageContent):
+                page_content.set_save_data(self.set_save_data, self.get_save_data)
 
 
 class _SshProbeThread(QThread):
@@ -930,10 +952,24 @@ class AutoClockPageContent(PageContent):
     def set_save_data(self, set_func, get_func):
         self.set_data_func = set_func
         self.get_data_func = get_func
+        self._load_input_widgets()
 
+    def _load_input_widgets(self):
         for widget in self.input_save_widget:
-            widget.set_value(self.get_data_func(widget.key, widget.default))
-            widget.value_changed_func(self.set_data_func)
+            try:
+                widget.set_value(self.get_data_func(widget.key, widget.default))
+                widget.value_changed_func(self.set_data_func)
+            except Exception:
+                pass
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.get_data_func and self.input_save_widget:
+            for widget in self.input_save_widget:
+                try:
+                    widget.set_value(self.get_data_func(widget.key, widget.default))
+                except Exception:
+                    pass
 
 class AutoClockContainer(Container):
     def __init__(self, x, y):
