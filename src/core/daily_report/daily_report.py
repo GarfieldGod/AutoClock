@@ -79,10 +79,22 @@ class DailyReport:
             Log.info("DailyReport: create driver successfully after safe retry")
             return driver
 
+    def _can_show_web_page(self):
+        if not self.config.show_web_page:
+            return False
+        if platform.system() != "Linux":
+            return True
+        display = str(os.environ.get("DISPLAY", "")).strip()
+        wayland = str(os.environ.get("WAYLAND_DISPLAY", "")).strip()
+        return bool(display or wayland)
+
     def _build_edge_options(self, profile_dir, safe_mode=False):
         opts = Options()
         opts.page_load_strategy = 'eager'
-        if not self.config.show_web_page:
+        effective_show_web_page = self._can_show_web_page()
+        if self.config.show_web_page and not effective_show_web_page:
+            Log.warn("DailyReport: show_web_page requested but no DISPLAY/WAYLAND_DISPLAY found, fallback to headless")
+        if not effective_show_web_page:
             opts.add_argument("--headless=new")
 
         if platform.system() == "Linux":
@@ -101,7 +113,7 @@ class DailyReport:
         opts.add_argument("--disable-blink-features=AutomationControlled")
         opts.add_argument("--no-first-run")
         opts.add_argument("--no-default-browser-check")
-        if self.config.show_web_page:
+        if effective_show_web_page:
             opts.add_argument("--start-maximized")
 
         opts.add_argument(f"--user-data-dir={profile_dir}")
@@ -171,6 +183,9 @@ class DailyReport:
         parts = [str(error).strip()]
         parts.append(f"profile_dir={self._get_profile_dir()}")
         parts.append(f"show_web_page={self.config.show_web_page}")
+        parts.append(f"effective_show_web_page={self._can_show_web_page()}")
+        parts.append(f"DISPLAY={os.environ.get('DISPLAY', '')}")
+        parts.append(f"WAYLAND_DISPLAY={os.environ.get('WAYLAND_DISPLAY', '')}")
 
         edge_binary = self._find_edge_binary()
         parts.append(f"edge_binary={edge_binary or 'not_found'}")

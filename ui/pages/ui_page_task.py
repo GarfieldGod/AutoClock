@@ -320,15 +320,15 @@ class TaskListContainer(Container):
                 2: 90,
                 3: 70,
                 5: 68,
-                6: 94,
+                6: 82,
             }
             fixed_total = sum(fixed_widths.values())
             remaining = max(0, total_width - fixed_total)
 
             flexible_widths = {
-                0: max(126, int(remaining * 0.29)),
-                1: max(118, int(remaining * 0.24)),
-                4: max(88, remaining - max(126, int(remaining * 0.29)) - max(118, int(remaining * 0.24))),
+                0: max(132, int(remaining * 0.31)),
+                1: max(124, int(remaining * 0.26)),
+                4: max(78, remaining - max(132, int(remaining * 0.31)) - max(124, int(remaining * 0.26))),
             }
 
             used = fixed_total + sum(flexible_widths.values())
@@ -338,7 +338,7 @@ class TaskListContainer(Container):
                 for col in reduce_cols:
                     if overflow <= 0:
                         break
-                    min_width = 108 if col == 0 else (104 if col == 1 else 80)
+                    min_width = 116 if col == 0 else (112 if col == 1 else 72)
                     current = flexible_widths[col]
                     delta = min(overflow, max(0, current - min_width))
                     flexible_widths[col] = current - delta
@@ -660,10 +660,10 @@ class TaskListContainer(Container):
 
         holder = QWidget()
         holder_layout = QHBoxLayout(holder)
-        holder_layout.setContentsMargins(4, 0, 2, 0)
+        holder_layout.setContentsMargins(3, 0, 1, 0)
         holder_layout.setSpacing(0)
+        holder_layout.addWidget(status_button, 0, Qt.AlignLeft | Qt.AlignVCenter)
         holder_layout.addStretch(1)
-        holder_layout.addWidget(status_button, 0, Qt.AlignRight | Qt.AlignVCenter)
         self.system_plan_list.setCellWidget(row, 6, holder)
 
     def refresh_last_results(self):

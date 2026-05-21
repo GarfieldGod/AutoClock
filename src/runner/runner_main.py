@@ -232,8 +232,9 @@ def main(argv: list[str] | None = None) -> int:
             show_web_page = getattr(args, "show_web_page", False)
             interactive = getattr(args, "interactive", False)
 
-            def _check_authorized(driver):
-                driver.get(DAILY_REPORT_URL)
+            def _check_authorized(driver, navigate=True):
+                if navigate:
+                    driver.get(DAILY_REPORT_URL)
                 try:
                     WebDriverWait(driver, 10).until(
                         lambda d: (
@@ -263,6 +264,15 @@ def main(argv: list[str] | None = None) -> int:
                         pass
                 return False
 
+            def _page_state(driver):
+                try:
+                    return {
+                        "url": driver.current_url or "",
+                        "title": driver.title or "",
+                    }
+                except Exception:
+                    return {"url": "", "title": ""}
+
             def _interactive_auth(driver):
                 import base64
                 profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
@@ -283,7 +293,10 @@ def main(argv: list[str] | None = None) -> int:
                     except TimeoutException:
                         pass
 
-                    if _check_authorized(driver):
+                    state = _page_state(driver)
+                    Log.info(f"interactive_auth: initial state url={state['url']} title={state['title']}")
+
+                    if _check_authorized(driver, navigate=False):
                         send_msg({"type": MSG_AUTH_SUCCESS})
                         return True
 
@@ -293,6 +306,8 @@ def main(argv: list[str] | None = None) -> int:
                         )
                         auth_btn.click()
                         time.sleep(2)
+                        state = _page_state(driver)
+                        Log.info(f"interactive_auth: clicked authorize button, url={state['url']} title={state['title']}")
                     except Exception:
                         pass
 
@@ -308,13 +323,18 @@ def main(argv: list[str] | None = None) -> int:
                     except TimeoutException:
                         pass
 
+                    state = _page_state(driver)
+                    Log.info(f"interactive_auth: waiting result url={state['url']} title={state['title']}")
+
                     qr_el = find_element_any(driver, AUTH_QR_SELECTORS, timeout=5)
                     if qr_el:
                         png_data = qr_el.screenshot_as_png
                         send_msg({"type": MSG_QR_READY, "data": base64.b64encode(png_data).decode()})
                         while True:
                             try:
-                                if "daily" in (driver.current_url or ""):
+                                if _check_authorized(driver, navigate=False):
+                                    state = _page_state(driver)
+                                    Log.info(f"interactive_auth: confirmed authorized after QR scan, url={state['url']}")
                                     send_msg({"type": MSG_AUTH_SUCCESS})
                                     return True
                             except Exception:
@@ -329,9 +349,18 @@ def main(argv: list[str] | None = None) -> int:
                                 return False
                             time.sleep(1)
 
+                    if _check_authorized(driver, navigate=False):
+                        state = _page_state(driver)
+                        Log.info(f"interactive_auth: authorized without QR prompt, url={state['url']}")
+                        send_msg({"type": MSG_AUTH_SUCCESS})
+                        return True
+
                     if "login" in (driver.current_url or "").lower():
+                        state = _page_state(driver)
+                        Log.info(f"interactive_auth: falling back to phone login, url={state['url']} title={state['title']}")
                         return _phone_login(driver)
-                    send_msg({"type": MSG_AUTH_ERROR, "data": "未检测到二维码，请切换到手机号登录或重试"})
+                    state = _page_state(driver)
+                    send_msg({"type": MSG_AUTH_ERROR, "data": f"未检测到二维码，当前页面 url={state['url']} title={state['title']}"})
                     return False
                 except Exception as e:
                     send_msg({"type": MSG_AUTH_ERROR, "data": str(e)})
@@ -398,15 +427,16 @@ def main(argv: list[str] | None = None) -> int:
                         submit_btn = find_element_any(driver, AUTH_SUBMIT_SELECTORS, timeout=3)
                         if submit_btn:
                             submit_btn.click()
-                            time.sleep(3)
+                            time.sleep(5)
 
-                try:
-                    WebDriverWait(driver, 30).until(lambda d: "daily" in (d.current_url or ""))
-                    send_msg({"type": MSG_AUTH_SUCCESS})
-                    return True
-                except TimeoutException:
-                    send_msg({"type": MSG_AUTH_ERROR, "data": "登录超时，请重试"})
-                    return False
+                ok = _check_authorized(driver, navigate=False)
+                if ok:
+                    state = _page_state(driver)
+                    Log.info(f"interactive_auth: phone login authorized, url={state['url']} title={state['title']}")
+                else:
+                    state = _page_state(driver)
+                    Log.warn(f"interactive_auth: phone login not authorized, url={state['url']} title={state['title']}")
+                return ok
 
             profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
             clean_profile_locks(profile_dir)
