@@ -4,7 +4,7 @@ import time
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget, QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QScrollArea, QSizePolicy, QDialog
 
-from src.utils.const import Key, AppPath
+from src.utils.const import Key
 from ui.main_window.auto_clock_window import AutoClockPageContent
 from ui.custom.custom_style import get_group_css
 from ui.custom.custom_widget import LineEdit, TextEdit
@@ -173,7 +173,6 @@ class DailyReportPage(AutoClockPageContent):
         self._set_auth_status(False)
 
     def _refresh_auth_status_async(self):
-        from src.utils.utils import Utils
         from src.core.daily_report.daily_report_manager import AuthStatusCheckWorker
 
         if self._auth_status_worker and self._auth_status_worker.isRunning():
@@ -182,8 +181,7 @@ class DailyReportPage(AutoClockPageContent):
         w = self.window()
         is_remote = hasattr(w, "is_remote_connected") and w.is_remote_connected()
 
-        data = Utils.read_dict_from_json(AppPath.DataJson)
-        driver_path = (data.get(Key.DriverPath) or "").strip()
+        driver_path = str(self.get_data_func(Key.DriverPath, "") if self.get_data_func else "").strip()
         show_web_page = False
 
         if not is_remote and (not driver_path or not os.path.exists(driver_path)):
@@ -220,7 +218,6 @@ class DailyReportPage(AutoClockPageContent):
         self._refresh_auth_status_async()
 
     def _start_auth(self):
-        from src.utils.utils import Utils
         from src.core.daily_report.daily_report_manager import AuthWorker, RemoteAuthWorker
         from ui.dialogs.daily_auth_dialog import DailyAuthDialog
 
@@ -243,15 +240,13 @@ class DailyReportPage(AutoClockPageContent):
                 if not ok:
                     MessageBox(str(result or "Failed to ensure remote Edge Driver."))
                     return
-            data = Utils.read_dict_from_json(AppPath.DataJson)
-            driver_path = (data.get(Key.DriverPath) or "").strip()
+            driver_path = str(self.get_data_func(Key.DriverPath, "") if self.get_data_func else "").strip()
             if not driver_path:
                 MessageBox("Remote driver path not configured in remote data.json.")
                 return
             worker = RemoteAuthWorker(ssh_cfg, driver_path, show_web_page=show_web_page)
         else:
-            data = Utils.read_dict_from_json(AppPath.DataJson)
-            driver_path = (data.get(Key.DriverPath) or "").strip()
+            driver_path = str(self.get_data_func(Key.DriverPath, "") if self.get_data_func else "").strip()
             if not driver_path or not os.path.exists(driver_path):
                 MessageBox("Please configure a valid Edge Driver Path first.")
                 return

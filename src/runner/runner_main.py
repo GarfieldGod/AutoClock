@@ -58,6 +58,9 @@ def main(argv: list[str] | None = None) -> int:
     auth_parser.add_argument("--show_web_page", action="store_true", help="Show browser window")
     auth_parser.add_argument("--interactive", action="store_true", help="Interactive mode with stdin/stdout JSON protocol")
 
+    auth_status_parser = subparsers.add_parser("auth_status", help="Check daily report authorization state without triggering login flow")
+    auth_status_parser.add_argument("--driver_path", required=True, help="Path to msedgedriver")
+
     # Backward compatible flags: auto-clock-runner --task_id=xxx [--headless]
     legacy_parser = argparse.ArgumentParser(add_help=False)
     legacy_parser.add_argument("--task_id")
@@ -206,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
                 suffix = f"; exact_version={exact_version}; exact_error={exact_version_error}" if exact_version else ""
                 raise RuntimeError(f"driver_install failed: {e}{suffix}")
 
-        if args.command == "auth":
+        if args.command in {"auth", "auth_status"}:
             from src.core.daily_report.auth_common import (
                 clean_profile_locks, clean_profile_cache, clean_profile_session,
                 find_element_any,
@@ -222,16 +225,60 @@ def main(argv: list[str] | None = None) -> int:
             from src.core.daily_report.daily_report import DailyReport, DailyReportConfig, DAILY_REPORT_URL
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.common import TimeoutException
+            from selenium.webdriver.common.by import By
 
             driver_path = args.driver_path
-            show_web_page = args.show_web_page
-            interactive = args.interactive
+            show_web_page = getattr(args, "show_web_page", False)
+            interactive = getattr(args, "interactive", False)
+
+            def _check_authorized(driver):
+                driver.get(DAILY_REPORT_URL)
+                try:
+                    WebDriverWait(driver, 10).until(
+                        lambda d: (
+                            "daily" in (d.current_url or "").lower()
+                            or "authen" in (d.current_url or "").lower()
+                            or "login" in (d.current_url or "").lower()
+                        )
+                    )
+                except TimeoutException:
+                    pass
+
+                current = (driver.current_url or "").lower()
+                if "login" in current or "authen" in current or "auth" in current:
+                    return False
+                if "daily" in current:
+                    try:
+                        task_el = driver.find_element(By.ID, "task")
+                        if task_el.is_displayed():
+                            return True
+                    except Exception:
+                        pass
+                    try:
+                        project_el = driver.find_element(By.ID, "proList")
+                        if project_el.is_displayed():
+                            return True
+                    except Exception:
+                        pass
+                return False
 
             def _interactive_auth(driver):
                 import base64
                 profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
                 try:
-                    qr_el = find_element_any(driver, AUTH_QR_SELECTORS, timeout=3)
+                    try:
+                        WebDriverWait(driver, 15).until(
+                            lambda d: (
+                                find_element_any(d, AUTH_QR_SELECTORS, timeout=1) is not None
+                                or find_element_any(d, AUTH_PHONE_INPUT_SELECTORS, timeout=1) is not None
+                                or "daily" in (d.current_url or "").lower()
+                                or "login" in (d.current_url or "").lower()
+                            )
+                        )
+                    except TimeoutException:
+                        pass
+
+                    qr_el = find_element_any(driver, AUTH_QR_SELECTORS, timeout=5)
                     if qr_el:
                         png_data = qr_el.screenshot_as_png
                         send_msg({"type": MSG_QR_READY, "data": base64.b64encode(png_data).decode()})
@@ -254,8 +301,8 @@ def main(argv: list[str] | None = None) -> int:
 
                     if "login" in (driver.current_url or "").lower():
                         return _phone_login(driver)
-                    # No QR and no login page, try phone login as fallback
-                    return _phone_login(driver)
+                    send_msg({"type": MSG_AUTH_ERROR, "data": "未检测到二维码，请切换到手机号登录或重试"})
+                    return False
                 except Exception as e:
                     send_msg({"type": MSG_AUTH_ERROR, "data": str(e)})
                     return False
@@ -352,6 +399,9 @@ def main(argv: list[str] | None = None) -> int:
             report = None
             try:
                 report = DailyReport(config)
+                if args.command == "auth_status":
+                    return 0 if _check_authorized(report.driver) else 2
+
                 ok, error = report._navigate_and_authorize()
                 if ok:
                     if interactive:
@@ -359,8 +409,7 @@ def main(argv: list[str] | None = None) -> int:
                     return 0
 
                 if interactive:
-                    _interactive_auth(report.driver)
-                    return 0
+                    return 0 if _interactive_auth(report.driver) else 2
 
                 Log.error(error or "Auth check failed")
                 return 2

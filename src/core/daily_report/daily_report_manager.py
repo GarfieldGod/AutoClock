@@ -220,7 +220,7 @@ class AuthStatusCheckWorker(QThread):
             return False
 
         runner_path = f"{AppPath.RemoteAppRoot}/servers/current/auto-clock-runner"
-        cmd = f"{runner_path} auth --driver_path={self._driver_path}"
+        cmd = f"{runner_path} auth_status --driver_path={self._driver_path}"
         with SshClient(self._ssh_cfg) as ssh:
             code, _, _ = ssh.exec(cmd, timeout_sec=180)
             return code == 0

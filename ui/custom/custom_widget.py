@@ -23,8 +23,7 @@ class LineEdit(QLineEdit):
             print(e)
 
     def set_value(self, value):
-        if value or value == 0:
-            self.setText(str(value))
+        self.setText(str(value) if value is not None else "")
 
 
 class PasswordLineEdit(QWidget):
@@ -153,8 +152,7 @@ class TextEdit(QTextEdit):
         self.textChanged.connect(lambda: set_func(self.key, self.toPlainText()))
 
     def set_value(self, value):
-        if value or value == 0:
-            self.setPlainText(str(value))
+        self.setPlainText(str(value) if value is not None else "")
 
 
 class ComboBox(QComboBox):

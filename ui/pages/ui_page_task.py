@@ -314,16 +314,16 @@ class TaskListContainer(Container):
             fixed_widths = {
                 2: 82,
                 3: 70,
-                5: 92,
-                6: 88,
+                5: 76,
+                6: 104,
             }
             fixed_total = sum(fixed_widths.values())
             remaining = max(0, total_width - fixed_total)
 
             flexible_widths = {
-                0: max(140, int(remaining * 0.28)),
-                1: max(120, int(remaining * 0.22)),
-                4: max(130, remaining - max(140, int(remaining * 0.28)) - max(120, int(remaining * 0.22))),
+                0: max(132, int(remaining * 0.30)),
+                1: max(108, int(remaining * 0.21)),
+                4: max(96, remaining - max(132, int(remaining * 0.30)) - max(108, int(remaining * 0.21))),
             }
 
             used = fixed_total + sum(flexible_widths.values())
@@ -333,7 +333,7 @@ class TaskListContainer(Container):
                 for col in reduce_cols:
                     if overflow <= 0:
                         break
-                    min_width = 120 if col != 4 else 110
+                    min_width = 112 if col == 0 else (96 if col == 1 else 88)
                     current = flexible_widths[col]
                     delta = min(overflow, max(0, current - min_width))
                     flexible_widths[col] = current - delta
