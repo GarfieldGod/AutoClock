@@ -97,7 +97,7 @@ class RemoteLinuxRunner:
         current_dir = self._layout.current_dir
         runner_current = self._layout.runner_path_current
         script = (
-            f"mkdir -p {current_dir} && "
+            f"rm -rf {current_dir} && mkdir -p {self._layout.servers_root} && "
             f"ln -sfn {version_dir} {current_dir} && "
             f"chmod +x {runner_current} && "
             f"test -x {runner_current}"
