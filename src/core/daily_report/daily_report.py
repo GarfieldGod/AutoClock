@@ -61,6 +61,7 @@ class DailyReport:
 
     def create_driver(self):
         opts = Options()
+        opts.page_load_strategy = 'eager'
         if not self.config.show_web_page:
             opts.add_argument("--headless=new")
             opts.add_argument("--no-sandbox")

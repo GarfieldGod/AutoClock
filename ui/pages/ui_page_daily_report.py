@@ -1,14 +1,13 @@
 import os
 
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtWidgets import QWidget, QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QScrollArea, QSizePolicy, QApplication
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QWidget, QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QScrollArea, QSizePolicy, QDialog
 
 from src.utils.const import Key, AppPath
 from ui.main_window.auto_clock_window import AutoClockPageContent
 from ui.custom.custom_style import get_group_css
 from ui.custom.custom_widget import LineEdit, TextEdit
 from src.ui.ui_message import MessageBox
-from src.utils.log import Log
 
 
 class DailyReportPage(AutoClockPageContent):
@@ -106,24 +105,24 @@ class DailyReportPage(AutoClockPageContent):
         layout_group = QVBoxLayout(group)
 
         info = QLabel(
-            "Click the 'Authorization' button to open Edge and complete the login process.\n"
-            "After logging in, close the browser. The authorization status will be saved automatically."
+            "Click 'Authorization' to open the auth dialog.\n"
+            "Scan the QR code with your phone or use the phone login option."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: #6b7280; font-size: 12px;")
         layout_group.addWidget(info)
 
         btn_layout = QHBoxLayout()
-        login_btn = QPushButton("Authorization")
-        login_btn.setStyleSheet(
+        self._auth_btn = QPushButton("Authorization")
+        self._auth_btn.setStyleSheet(
             "QPushButton { background: #2563eb; color: white; border: none; "
             "border-radius: 6px; padding: 8px 20px; font-weight: 600; font-size: 13px; }"
             "QPushButton:hover { background: #1d4ed8; }"
             "QPushButton:pressed { background: #1e40af; }"
             "QPushButton:disabled { background: #93c5fd; }"
         )
-        login_btn.clicked.connect(lambda: self._manual_login(login_btn))
-        btn_layout.addWidget(login_btn)
+        self._auth_btn.clicked.connect(self._start_auth)
+        btn_layout.addWidget(self._auth_btn)
 
         self._auth_status_label = QLabel()
         self._auth_status_label.setStyleSheet("font-size: 12px; font-weight: 600;")
@@ -131,7 +130,6 @@ class DailyReportPage(AutoClockPageContent):
         btn_layout.addStretch()
         layout_group.addLayout(btn_layout)
 
-        self._manual_login_btn = login_btn
         parent_layout.addWidget(group)
 
     def _update_auth_status(self):
@@ -149,32 +147,64 @@ class DailyReportPage(AutoClockPageContent):
         super().showEvent(event)
         self._update_auth_status()
 
-    def _manual_login(self, btn):
+    def _start_auth(self):
         from src.utils.utils import Utils
-        data = Utils.read_dict_from_json(AppPath.DataJson)
-        driver_path = (data.get(Key.DriverPath) or "").strip()
-        if not driver_path or not os.path.exists(driver_path):
-            MessageBox("请先配置有效的 Edge Driver 路径。")
-            return
+        from src.core.daily_report.daily_report_manager import AuthWorker, RemoteAuthWorker
+        from ui.dialogs.daily_auth_dialog import DailyAuthDialog
 
-        btn.setEnabled(False)
-        btn.setText("Opening...")
-        QApplication.processEvents()
+        w = self.window()
+        is_remote = hasattr(w, "is_remote_connected") and w.is_remote_connected()
 
-        self._login_thread = _ManualLoginThread(driver_path)
-        self._login_thread.finished.connect(lambda ok, err: self._on_login_done(btn, ok, err))
-        self._login_thread.start()
+        if is_remote:
+            ssh_cfg = getattr(w, '_remote_ssh_cfg', None)
+            if not ssh_cfg:
+                MessageBox("No SSH connection found. Please connect to remote first.")
+                return
+            data = Utils.read_dict_from_json(AppPath.DataJson)
+            driver_path = (data.get(Key.DriverPath) or "").strip()
+            if not driver_path:
+                MessageBox("Remote driver path not configured in remote data.json.")
+                return
+            worker = RemoteAuthWorker(ssh_cfg, driver_path)
+        else:
+            data = Utils.read_dict_from_json(AppPath.DataJson)
+            driver_path = (data.get(Key.DriverPath) or "").strip()
+            if not driver_path or not os.path.exists(driver_path):
+                MessageBox("Please configure a valid Edge Driver Path first.")
+                return
+            worker = AuthWorker(driver_path, show_web_page=data.get(Key.ShowWebPage, False))
 
-    def _on_login_done(self, btn, ok, error):
-        btn.setEnabled(True)
-        btn.setText("Authorization")
+        dialog = DailyAuthDialog(self.window())
+        dialog.set_callbacks(
+            on_phone_submit=lambda phone: worker.set_phone(phone),
+            on_code_submit=lambda code: worker.set_code(code),
+            on_switch_phone=lambda: worker.switch_to_phone(),
+            on_switch_qr=lambda: worker.switch_to_qr(),
+            on_cancel=lambda: worker.cancel(),
+        )
+        worker.qr_ready.connect(dialog.show_qr_code)
+        worker.need_phone.connect(dialog.show_phone_input)
+        worker.need_code.connect(dialog.show_code_input)
+        worker.auth_success.connect(lambda: self._on_auth_result(dialog, worker, True, None))
+        worker.auth_error.connect(lambda msg: self._on_auth_result(dialog, worker, False, msg))
+        worker.start()
+
+        self._auth_btn.setEnabled(False)
+        dialog.exec_()
+        if dialog.result() != QDialog.Accepted:
+            self._auth_btn.setEnabled(True)
+
+    def _on_auth_result(self, dialog, worker, ok, error):
         if ok:
+            dialog.show_success()
             if self.set_data_func:
                 self.set_data_func(Key.DailyAuthorized, True)
             self._update_auth_status()
-            MessageBox("授权成功！已保存登录状态，可以自动执行日报了。")
         elif error:
-            MessageBox(f"Login failed: {error}")
+            dialog.show_error(error)
+            self._auth_btn.setEnabled(True)
+        else:
+            self._auth_btn.setEnabled(True)
 
     def _build_template_section(self, parent_layout):
         group = QGroupBox("Daily Report")
@@ -248,17 +278,3 @@ class DailyReportPage(AutoClockPageContent):
         parent_layout.addWidget(group)
 
 
-class _ManualLoginThread(QThread):
-    finished = pyqtSignal(bool, str)
-
-    def __init__(self, driver_path):
-        super().__init__()
-        self.driver_path = driver_path
-
-    def run(self):
-        try:
-            from src.core.daily_report.daily_report_manager import run_manual_login
-            ok, error = run_manual_login(self.driver_path)
-            self.finished.emit(ok, error)
-        except Exception as e:
-            self.finished.emit(False, str(e))

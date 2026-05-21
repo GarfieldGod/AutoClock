@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -51,6 +52,11 @@ def main(argv: list[str] | None = None) -> int:
         default=str(Path(AppPath.AppRoot) / "driver"),
         help="Driver root directory (default: ~/.local/share/auto-clock/driver)",
     )
+
+    auth_parser = subparsers.add_parser("auth", help="Daily report authorization (check or interactive)")
+    auth_parser.add_argument("--driver_path", required=True, help="Path to msedgedriver")
+    auth_parser.add_argument("--show_web_page", action="store_true", help="Show browser window")
+    auth_parser.add_argument("--interactive", action="store_true", help="Interactive mode with stdin/stdout JSON protocol")
 
     # Backward compatible flags: auto-clock-runner --task_id=xxx [--headless]
     legacy_parser = argparse.ArgumentParser(add_help=False)
@@ -148,6 +154,178 @@ def main(argv: list[str] | None = None) -> int:
 
             print(str(driver_path))
             return 0
+
+        if args.command == "auth":
+            from src.core.daily_report.auth_common import (
+                clean_profile_locks, clean_profile_cache,
+                find_element_any,
+                AUTH_QR_SELECTORS, AUTH_PHONE_SWITCH_SELECTORS, AUTH_QR_SWITCH_SELECTORS,
+                AUTH_PHONE_INPUT_SELECTORS, AUTH_PHONE_NEXT_BUTTON,
+                AUTH_CODE_INPUT_SELECTORS,
+                AUTH_SEND_CODE_SELECTORS, AUTH_SUBMIT_SELECTORS, AUTH_AGREE_BUTTON,
+                send_msg, recv_msg,
+                MSG_QR_READY, MSG_NEED_PHONE, MSG_NEED_CODE,
+                MSG_AUTH_SUCCESS, MSG_AUTH_ERROR,
+                MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
+            )
+            from src.core.daily_report.daily_report import DailyReport, DailyReportConfig, DAILY_REPORT_URL
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.common import TimeoutException
+
+            driver_path = args.driver_path
+            show_web_page = args.show_web_page
+            interactive = args.interactive
+
+            def _interactive_auth(driver):
+                import base64
+                profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
+                try:
+                    qr_el = find_element_any(driver, AUTH_QR_SELECTORS, timeout=3)
+                    if qr_el:
+                        png_data = qr_el.screenshot_as_png
+                        send_msg({"type": MSG_QR_READY, "data": base64.b64encode(png_data).decode()})
+                        while True:
+                            try:
+                                if "daily" in (driver.current_url or ""):
+                                    send_msg({"type": MSG_AUTH_SUCCESS})
+                                    return True
+                            except Exception:
+                                pass
+                            msg = recv_msg()
+                            if msg is None:
+                                return False
+                            t = msg.get("type", "")
+                            if t == MSG_SWITCH_PHONE:
+                                break
+                            if t == MSG_CANCEL:
+                                return False
+                            time.sleep(1)
+
+                    if "login" in (driver.current_url or "").lower():
+                        return _phone_login(driver)
+                    # No QR and no login page, try phone login as fallback
+                    return _phone_login(driver)
+                except Exception as e:
+                    send_msg({"type": MSG_AUTH_ERROR, "data": str(e)})
+                    return False
+
+            def _phone_login(driver):
+                switch_el = find_element_any(driver, AUTH_PHONE_SWITCH_SELECTORS)
+                if switch_el:
+                    try:
+                        switch_el.click()
+                        time.sleep(2)
+                    except Exception:
+                        pass
+
+                send_msg({"type": MSG_NEED_PHONE})
+                msg = recv_msg()
+                if msg is None or msg.get("type") == MSG_CANCEL:
+                    return False
+                if msg.get("type") == MSG_SWITCH_QR:
+                    qr_switch = find_element_any(driver, AUTH_QR_SWITCH_SELECTORS)
+                    if qr_switch:
+                        try:
+                            qr_switch.click()
+                            time.sleep(2)
+                        except Exception:
+                            pass
+                    return _interactive_auth(driver)
+                phone = (msg.get("data") or "").strip() if msg.get("type") == MSG_PHONE else ""
+                if phone:
+                    phone_input = find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=5)
+                    if phone_input:
+                        phone_input.clear()
+                        phone_input.send_keys(phone)
+                        time.sleep(1)
+                        send_btn = find_element_any(driver, AUTH_PHONE_NEXT_BUTTON, timeout=5)
+                        if send_btn:
+                            send_btn.click()
+                            time.sleep(1)
+                        agree_btn = find_element_any(driver, AUTH_AGREE_BUTTON, timeout=3)
+                        if agree_btn:
+                            agree_btn.click()
+                            time.sleep(2)
+
+                send_msg({"type": MSG_NEED_CODE})
+                msg = recv_msg()
+                if msg is None or msg.get("type") == MSG_CANCEL:
+                    return False
+                if msg.get("type") == MSG_SWITCH_QR:
+                    qr_switch = find_element_any(driver, AUTH_QR_SWITCH_SELECTORS)
+                    if qr_switch:
+                        try:
+                            qr_switch.click()
+                            time.sleep(2)
+                        except Exception:
+                            pass
+                    return _interactive_auth(driver)
+                code = (msg.get("data") or "").strip() if msg.get("type") == MSG_CODE else ""
+                if code:
+                    code_input = find_element_any(driver, AUTH_CODE_INPUT_SELECTORS, timeout=5)
+                    if code_input:
+                        code_input.send_keys(code)
+                        time.sleep(5)
+                    else:
+                        submit_btn = find_element_any(driver, AUTH_SUBMIT_SELECTORS, timeout=3)
+                        if submit_btn:
+                            submit_btn.click()
+                            time.sleep(3)
+
+                try:
+                    WebDriverWait(driver, 30).until(lambda d: "daily" in (d.current_url or ""))
+                    send_msg({"type": MSG_AUTH_SUCCESS})
+                    return True
+                except TimeoutException:
+                    send_msg({"type": MSG_AUTH_ERROR, "data": "登录超时，请重试"})
+                    return False
+
+            profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
+            clean_profile_locks(profile_dir)
+
+            if not driver_path or not os.path.exists(driver_path):
+                Log.error(f"Driver not found: {driver_path}")
+                if interactive:
+                    send_msg({"type": MSG_AUTH_ERROR, "data": f"Driver not found: {driver_path}"})
+                return 1
+
+            config = DailyReportConfig(
+                driver_path=driver_path,
+                show_web_page=show_web_page,
+                work_desc="", normal_hours="", overtime_hours="",
+                project_name="", project_task="",
+                activity_type="", project_module="",
+            )
+            report = None
+            try:
+                report = DailyReport(config)
+                ok, error = report._navigate_and_authorize()
+                if ok:
+                    if interactive:
+                        send_msg({"type": MSG_AUTH_SUCCESS})
+                    return 0
+
+                if interactive:
+                    _interactive_auth(report.driver)
+                    return 0
+
+                Log.error(error or "Auth check failed")
+                return 2
+            except Exception as e:
+                Log.error(f"Auth error: {e}")
+                if interactive:
+                    send_msg({"type": MSG_AUTH_ERROR, "data": str(e)})
+                return 1
+            finally:
+                if report:
+                    try:
+                        report.quit()
+                    except Exception:
+                        pass
+                try:
+                    clean_profile_cache(profile_dir)
+                except Exception:
+                    pass
 
         if args.command == "cron_create":
             task_path = Path(args.task_json_path)
