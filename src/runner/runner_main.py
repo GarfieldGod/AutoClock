@@ -94,7 +94,63 @@ def main(argv: list[str] | None = None) -> int:
             driver_root = str(Path(args.driver_root).expanduser().resolve())
             Path(driver_root).mkdir(parents=True, exist_ok=True)
 
-            # 1) Prefer project existing logic (Utils.download_edge_web_driver)
+            def _edge_version() -> str | None:
+                for cmd in [
+                    "microsoft-edge --version",
+                    "microsoft-edge-stable --version",
+                    "msedge --version",
+                    "microsoft-edge-beta --version",
+                    "microsoft-edge-dev --version",
+                ]:
+                    try:
+                        res = subprocess.run(cmd.split(), capture_output=True, text=True)
+                        out = (res.stdout or res.stderr or "").strip()
+                        m = re.search(r"(\d+\.\d+\.\d+\.\d+)", out)
+                        if m:
+                            return m.group(1)
+                    except Exception:
+                        continue
+                return None
+
+            def _latest_release() -> str:
+                url = "https://msedgedriver.microsoft.com/LATEST_RELEASE"
+                with urllib.request.urlopen(url, timeout=20) as resp:
+                    return resp.read().decode("utf-8").strip()
+
+            def _download_driver(version: str) -> str:
+                zip_url = f"https://msedgedriver.azureedge.net/{version}/edgedriver_linux64.zip"
+                target_dir = Path(driver_root) / ".wdm" / "drivers" / "edgedriver" / "linux64" / version
+                target_dir.mkdir(parents=True, exist_ok=True)
+                driver_path = target_dir / "msedgedriver"
+                if driver_path.exists():
+                    return str(driver_path)
+
+                with tempfile.TemporaryDirectory() as td:
+                    tmp_zip = Path(td) / "edgedriver_linux64.zip"
+                    urllib.request.urlretrieve(zip_url, tmp_zip)
+                    with zipfile.ZipFile(tmp_zip, "r") as z:
+                        z.extractall(target_dir)
+
+                try:
+                    st = os.stat(driver_path)
+                    os.chmod(driver_path, st.st_mode | 0o111)
+                except Exception:
+                    pass
+
+                if not driver_path.exists():
+                    raise FileNotFoundError(f"Driver not found after extract: {driver_path}")
+                return str(driver_path)
+
+            exact_version = _edge_version()
+            if exact_version:
+                try:
+                    exact_driver = _download_driver(exact_version)
+                    print(exact_driver)
+                    return 0
+                except Exception:
+                    pass
+
+            # Fallback to project existing logic when exact-version install is unavailable
             try:
                 from src.utils.utils import Utils
 
@@ -111,47 +167,8 @@ def main(argv: list[str] | None = None) -> int:
             except Exception:
                 pass
 
-            # 2) Fallback: download zip and extract to driver_root/.wdm/drivers/edgedriver/linux64/<version>/
-            def _edge_version() -> str | None:
-                for cmd in ["microsoft-edge --version", "microsoft-edge-stable --version", "msedge --version"]:
-                    try:
-                        res = subprocess.run(cmd.split(), capture_output=True, text=True)
-                        out = (res.stdout or res.stderr or "").strip()
-                        m = re.search(r"(\d+\.\d+\.\d+\.\d+)", out)
-                        if m:
-                            return m.group(1)
-                    except Exception:
-                        continue
-                return None
-
-            def _latest_release() -> str:
-                url = "https://msedgedriver.microsoft.com/LATEST_RELEASE"
-                with urllib.request.urlopen(url, timeout=20) as resp:
-                    return resp.read().decode("utf-8").strip()
-
-            version = _edge_version() or _latest_release()
-            zip_url = f"https://msedgedriver.azureedge.net/{version}/edgedriver_linux64.zip"
-
-            target_dir = Path(driver_root) / ".wdm" / "drivers" / "edgedriver" / "linux64" / version
-            target_dir.mkdir(parents=True, exist_ok=True)
-            driver_path = target_dir / "msedgedriver"
-            if driver_path.exists():
-                print(str(driver_path))
-                return 0
-
-            with tempfile.TemporaryDirectory() as td:
-                tmp_zip = Path(td) / "edgedriver_linux64.zip"
-                urllib.request.urlretrieve(zip_url, tmp_zip)
-                with zipfile.ZipFile(tmp_zip, "r") as z:
-                    z.extractall(target_dir)
-
-            # zip contains msedgedriver at root; ensure executable bit
-            try:
-                st = os.stat(driver_path)
-                os.chmod(driver_path, st.st_mode | 0o111)
-            except Exception:
-                pass
-
+            version = exact_version or _latest_release()
+            driver_path = _download_driver(version)
             print(str(driver_path))
             return 0
 

@@ -3,8 +3,8 @@ from datetime import datetime
 
 from PyQt5.QtCore import QSize, QDate, Qt
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QListWidget, QListWidgetItem, \
-    QDialog, QWidget, QApplication
+from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, \
+    QDialog, QWidget, QApplication, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
 
 from src.ui.ui_message import MessageBox
 from src.utils.const import AppPath, Key
@@ -53,9 +53,10 @@ class TaskListContainer(Container):
         super(TaskListContainer, self).__init__(x, y)
 
         self.task_list = []
-        self.system_plan_list = QListWidget()
+        self.system_plan_list = QTableWidget()
         self.button_create = QPushButton("Create")
         self.button_delete = QPushButton("Delete")
+        self.button_refresh = QPushButton("Refresh Result")
 
         self.init_ui_layout()
         self.update_plan_list()
@@ -162,77 +163,47 @@ class TaskListContainer(Container):
         group_system.setStyleSheet(get_group_css({}))
         layout_system = QVBoxLayout(group_system)
 
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(6, 0, 6, 0)
-        header_layout.setSpacing(6)
-        header_defs = [
-            ("Task Name", TaskListWidget.COL_TASK),
-            ("Operation", TaskListWidget.COL_OPERATION),
-            ("Trigger", TaskListWidget.COL_TRIGGER),
-            ("Time", TaskListWidget.COL_TIME),
-            ("Schedule", TaskListWidget.COL_SCHEDULE),
-            ("Result", TaskListWidget.COL_RESULT),
-            ("Status", TaskListWidget.COL_STATUS),
-        ]
-        compact = self._is_compact_screen()
-        header_font_size = 9 if compact else 10
-        for title, width in header_defs:
-            if title == "Result":
-                holder = QWidget()
-                holder.setFixedWidth(width)
-                holder_layout = QHBoxLayout(holder)
-                holder_layout.setContentsMargins(0, 0, 0, 0)
-                holder_layout.setSpacing(2)
-
-                label = QLabel(title)
-                f = QFont()
-                f.setPointSize(header_font_size)
-                f.setBold(False)
-                label.setFont(f)
-                label.setContentsMargins(0, 0, 0, 0)
-                label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-
-                btn_refresh = QPushButton("↻")
-                btn_refresh.setFixedSize(16, 16)
-                btn_refresh.setCursor(Qt.PointingHandCursor)
-                btn_refresh.setToolTip("Refresh last results")
-                btn_refresh.setStyleSheet(
-                    "QPushButton { border:none; color:#4b5563; font-size:12px; font-weight:600; padding:0; }"
-                    "QPushButton:hover { color:#111827; }"
-                    "QPushButton:pressed { color:#2563eb; }"
-                )
-                btn_refresh.clicked.connect(self.refresh_last_results)
-
-                holder_layout.addWidget(label)
-                holder_layout.addWidget(btn_refresh)
-                holder_layout.addStretch(1)
-                header_layout.addWidget(holder, 0)
-                continue
-
-            label = QLabel(title)
-            label.setFixedWidth(width)
-            f = QFont()
-            f.setPointSize(header_font_size)
-            f.setBold(False)
-            label.setFont(f)
-            label.setContentsMargins(0, 0, 0, 0)
-            label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            header_layout.addWidget(label, 0)
-        layout_system.addLayout(header_layout)
-
-        self.system_plan_list.setSpacing(2)
-        self.system_plan_list.setUniformItemSizes(True)
+        self.system_plan_list.setColumnCount(7)
+        self.system_plan_list.setHorizontalHeaderLabels([
+            "Task Name", "Operation", "Trigger", "Time", "Schedule", "Result", "Status"
+        ])
+        self.system_plan_list.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.system_plan_list.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.system_plan_list.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.system_plan_list.setAlternatingRowColors(False)
+        self.system_plan_list.setShowGrid(False)
+        self.system_plan_list.setWordWrap(False)
+        self.system_plan_list.setCornerButtonEnabled(False)
+        self.system_plan_list.verticalHeader().setVisible(False)
+        self.system_plan_list.verticalHeader().setDefaultSectionSize(34)
+        self.system_plan_list.horizontalHeader().setStretchLastSection(False)
+        self.system_plan_list.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.system_plan_list.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.system_plan_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.system_plan_list.setStyleSheet(
+            "QTableWidget { border: 1px solid #d1d5db; border-radius: 6px; background: white; }"
+            "QHeaderView::section { background: white; color: black; border: none; border-bottom: 1px solid #d1d5db; padding: 6px 8px; font-size: 10pt; text-align: left; }"
+            "QTableWidget::item { padding: 4px 8px; }"
+        )
+        self.system_plan_list.setColumnWidth(0, TaskListWidget.COL_TASK)
+        self.system_plan_list.setColumnWidth(1, TaskListWidget.COL_OPERATION)
+        self.system_plan_list.setColumnWidth(2, TaskListWidget.COL_TRIGGER)
+        self.system_plan_list.setColumnWidth(3, TaskListWidget.COL_TIME)
+        self.system_plan_list.setColumnWidth(4, TaskListWidget.COL_SCHEDULE)
+        self.system_plan_list.setColumnWidth(5, TaskListWidget.COL_RESULT)
+        self.system_plan_list.setColumnWidth(6, TaskListWidget.COL_STATUS)
         layout_system.addWidget(self.system_plan_list)
 
         layout_plan_list_buttons = QHBoxLayout()
         layout_plan_list_buttons.addWidget(self.button_create)
         layout_plan_list_buttons.addWidget(self.button_delete)
+        layout_plan_list_buttons.addWidget(self.button_refresh)
         layout_system.addLayout(layout_plan_list_buttons)
 
         self.button_create.clicked.connect(self.create_system_plan)
         self.button_delete.clicked.connect(self.delete_system_plan)
-        self.system_plan_list.itemDoubleClicked.connect(self.edit_system_plan)
+        self.button_refresh.clicked.connect(self.refresh_last_results)
+        self.system_plan_list.cellDoubleClicked.connect(self.edit_system_plan)
 
         layout_container = QVBoxLayout(self)
         layout_container.addWidget(group_system)
@@ -305,6 +276,24 @@ class TaskListContainer(Container):
             if task[Key.TaskID] == plan_id:
                 return index, task
         return -1, None
+
+    def _plan_id_for_row(self, row):
+        try:
+            if row is None or row < 0 or row >= len(self.task_list):
+                return None
+            return str(self.task_list[row].get(Key.TaskID, "") or "")
+        except Exception:
+            return None
+
+    @staticmethod
+    def _schedule_text(task):
+        if task[Key.TriggerType] in [Key.Once, Key.Weekly, Key.Monthly]:
+            return str(task.get(Key.ExecuteDay, "") or "")
+        if task[Key.TriggerType] == Key.SmartHoliday:
+            return "Smart"
+        if task[Key.TriggerType] == Key.Multiple:
+            return "[Multiple]"
+        return "Daily"
 
     def check_linux_credentials(self):
         try:
@@ -422,15 +411,11 @@ class TaskListContainer(Container):
             MessageBox(message)
             return None
 
-    def edit_system_plan(self, current_item):
+    def edit_system_plan(self, row, _column=0):
         try:
-            if current_item is None:
+            if row is None or row < 0:
                 return
-            selected_widget = self.system_plan_list.itemWidget(current_item)
-            if not selected_widget:
-                return
-
-            plan_id = selected_widget.objectName()
+            plan_id = self._plan_id_for_row(row)
             task_index, old_task = self._find_task_by_plan_id(plan_id)
             if old_task is None:
                 raise Exception(f"Edit plan failed, no plan id: {plan_id}")
@@ -466,16 +451,12 @@ class TaskListContainer(Container):
 
     def delete_system_plan(self):
         try:
-            current_item = self.system_plan_list.currentItem()
-            if current_item is None:
+            current_row = self.system_plan_list.currentRow()
+            if current_row is None or current_row < 0:
                 MessageBox("请选择要删除的计划任务")
                 return
-            selected_widget = self.system_plan_list.itemWidget(current_item)
-            if not selected_widget:
-                Log.error("选中项未绑定Plan")
-                return
 
-            plan_id = selected_widget.objectName()
+            plan_id = self._plan_id_for_row(current_row)
             Log.info(f"删除Plan: {plan_id}")
 
             _, delete_task = self._find_task_by_plan_id(plan_id)
@@ -504,14 +485,11 @@ class TaskListContainer(Container):
     def toggle_system_plan_enabled(self, plan_id=None, enabled=None):
         try:
             if not plan_id:
-                current_item = self.system_plan_list.currentItem()
-                if current_item is None:
+                current_row = self.system_plan_list.currentRow()
+                if current_row is None or current_row < 0:
                     MessageBox("Please select one task")
                     return False
-                selected_widget = self.system_plan_list.itemWidget(current_item)
-                if not selected_widget:
-                    return False
-                plan_id = selected_widget.objectName()
+                plan_id = self._plan_id_for_row(current_row)
 
             task_index, task = self._find_task_by_plan_id(plan_id)
             if task is None or task_index < 0:
@@ -541,7 +519,7 @@ class TaskListContainer(Container):
             dict_list = self._read_tasks()
             if dict_list is None: return
 
-            self.system_plan_list.clear()
+            self.system_plan_list.setRowCount(0)
             self.task_list = []
             changed = False
             if isinstance(dict_list, list):
@@ -568,12 +546,52 @@ class TaskListContainer(Container):
             MessageBox(message)
 
     def add_plan_ui(self, task):
-        widget_plan_line = TaskListWidget(task, on_status_toggle=self.toggle_system_plan_enabled)
+        row = self.system_plan_list.rowCount()
+        self.system_plan_list.insertRow(row)
 
-        item = QListWidgetItem()
-        item.setSizeHint(QSize(0, 34))
-        self.system_plan_list.addItem(item)
-        self.system_plan_list.setItemWidget(item, widget_plan_line)
+        values = [
+            str(task.get(Key.TaskName, "") or ""),
+            str(task.get(Key.Operation, "") or ""),
+            str(task.get(Key.TriggerType, "") or ""),
+            str(task.get(Key.ExecuteTime, "") or ""),
+            self._schedule_text(task),
+            str(task.get(Key.LastRunResult, "-") or "-"),
+        ]
+
+        for col, value in enumerate(values):
+            item = QTableWidgetItem(value)
+            item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            item.setToolTip(value)
+            self.system_plan_list.setItem(row, col, item)
+
+        status_button = QPushButton()
+        status_button.setCheckable(True)
+        status_on = bool(task.get(Key.Enabled, True))
+        status_button.setChecked(status_on)
+        status_button.setFixedWidth(52)
+        if status_on:
+            status_button.setText("ON")
+            status_button.setStyleSheet(
+                "QPushButton {background-color: #16a34a; color: white; border: 1px solid #15803d;"
+                "border-radius: 10px; padding: 2px 6px; font-weight: 600;}"
+            )
+        else:
+            status_button.setText("OFF")
+            status_button.setStyleSheet(
+                "QPushButton {background-color: #6b7280; color: white; border: 1px solid #4b5563;"
+                "border-radius: 10px; padding: 2px 6px; font-weight: 600;}"
+            )
+        plan_id = str(task.get(Key.TaskID, "") or "")
+        status_button.clicked.connect(
+            lambda checked, pid=plan_id: self.toggle_system_plan_enabled(pid, checked)
+        )
+
+        holder = QWidget()
+        holder_layout = QHBoxLayout(holder)
+        holder_layout.setContentsMargins(8, 0, 8, 0)
+        holder_layout.setSpacing(0)
+        holder_layout.addWidget(status_button, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        self.system_plan_list.setCellWidget(row, 6, holder)
 
     def refresh_last_results(self):
         try:

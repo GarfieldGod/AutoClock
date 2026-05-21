@@ -238,6 +238,11 @@ class DailyReportPage(AutoClockPageContent):
             if not ssh_cfg:
                 MessageBox("No SSH connection found. Please connect to remote first.")
                 return
+            if hasattr(w, "ensure_remote_driver"):
+                ok, result = w.ensure_remote_driver()
+                if not ok:
+                    MessageBox(str(result or "Failed to ensure remote Edge Driver."))
+                    return
             data = Utils.read_dict_from_json(AppPath.DataJson)
             driver_path = (data.get(Key.DriverPath) or "").strip()
             if not driver_path:
