@@ -244,6 +244,7 @@ class AuthWorker(QThread):
         self._cancel = False
         self._restart = False
         self._lock = threading.RLock()
+        self._driver = None
 
     def set_phone(self, phone):
         with self._lock:
@@ -264,6 +265,11 @@ class AuthWorker(QThread):
 
     def cancel(self):
         self._cancel = True
+        try:
+            if self._driver is not None:
+                self._driver.quit()
+        except Exception:
+            pass
 
     def _click_switch(self, driver):
         """Reliably click the QR/phone toggle button using real mouse click via ActionChains.
@@ -327,6 +333,7 @@ class AuthWorker(QThread):
 
             service = Service(executable_path=self.driver_path)
             driver = webdriver.Edge(service=service, options=opts)
+            self._driver = driver
 
             Log.info("AuthWorker: navigating to daily report URL...")
             driver.get(DAILY_REPORT_URL)
@@ -418,6 +425,7 @@ class AuthWorker(QThread):
             Log.error(f"AuthWorker error: {e}")
             self.auth_error.emit(str(e))
         finally:
+            self._driver = None
             if driver:
                 try:
                     driver.quit()
@@ -630,6 +638,8 @@ class RemoteAuthWorker(QThread):
         self._switch_to_qr = False
         self._cancel = False
         self._lock = threading.RLock()
+        self._stdin = None
+        self._chan = None
 
     def set_phone(self, phone):
         with self._lock:
@@ -645,6 +655,18 @@ class RemoteAuthWorker(QThread):
 
     def cancel(self):
         self._cancel = True
+        import json as _json
+        try:
+            if self._stdin is not None:
+                self._stdin.write((_json.dumps({"type": MSG_CANCEL}) + "\n").encode("utf-8"))
+                self._stdin.flush()
+        except Exception:
+            pass
+        try:
+            if self._chan is not None:
+                self._chan.close()
+        except Exception:
+            pass
 
     def switch_to_qr(self):
         with self._lock:
@@ -666,10 +688,12 @@ class RemoteAuthWorker(QThread):
             with SshClient(self.ssh_cfg) as ssh:
                 transport = ssh._client.get_transport()
                 chan = transport.open_session(timeout=60)
+                self._chan = chan
                 chan.exec_command(cmd)
                 chan.settimeout(0.5)
 
                 stdin = chan.makefile("wb")
+                self._stdin = stdin
                 stdout = chan.makefile("r")
                 stderr = chan.makefile_stderr("r")
 
@@ -700,6 +724,8 @@ class RemoteAuthWorker(QThread):
                     except socket.timeout:
                         continue
                     except Exception:
+                        if self._cancel:
+                            return
                         break
 
                     if not line:
@@ -775,8 +801,19 @@ class RemoteAuthWorker(QThread):
             else:
                 self.auth_error.emit(f"Remote auth process exited unexpectedly (code={exit_code}).")
         except Exception as e:
+            if self._cancel:
+                Log.info("RemoteAuthWorker: cancelled during exception handling")
+                return
             Log.error(f"RemoteAuthWorker error: {e}")
             self.auth_error.emit(str(e))
+        finally:
+            try:
+                self._stdin = None
+                self._chan = None
+            except Exception:
+                pass
+            self._stdin = None
+            self._chan = None
 
     def _wait_for_input(self, input_type):
         value = None

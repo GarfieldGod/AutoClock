@@ -174,6 +174,9 @@ class TaskListContainer(Container):
         self.system_plan_list.setAlternatingRowColors(False)
         self.system_plan_list.setShowGrid(False)
         self.system_plan_list.setWordWrap(False)
+        self.system_plan_list.setDragEnabled(False)
+        self.system_plan_list.setDragDropMode(QAbstractItemView.NoDragDrop)
+        self.system_plan_list.setAutoScroll(False)
         self.system_plan_list.setCornerButtonEnabled(False)
         self.system_plan_list.verticalHeader().setVisible(False)
         self.system_plan_list.verticalHeader().setDefaultSectionSize(34)
@@ -186,6 +189,8 @@ class TaskListContainer(Container):
         header_font.setBold(True)
         header.setFont(header_font)
         self.system_plan_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.system_plan_list.horizontalScrollBar().valueChanged.connect(self._reset_plan_table_horizontal_scroll)
+        self.system_plan_list.horizontalScrollBar().rangeChanged.connect(self._reset_plan_table_horizontal_scroll)
         self.system_plan_list.setStyleSheet(
             "QTableWidget { border: 1px solid #d1d5db; border-radius: 6px; background: white; }"
             "QHeaderView::section { background: white; color: black; border: none; border-bottom: 1px solid #d1d5db; padding: 6px 8px; font-size: 10pt; font-weight: 700; text-align: left; }"
@@ -312,18 +317,18 @@ class TaskListContainer(Container):
             total_width = max(0, viewport_width - scroll_width - 2)
 
             fixed_widths = {
-                2: 82,
+                2: 90,
                 3: 70,
-                5: 76,
-                6: 104,
+                5: 68,
+                6: 94,
             }
             fixed_total = sum(fixed_widths.values())
             remaining = max(0, total_width - fixed_total)
 
             flexible_widths = {
-                0: max(132, int(remaining * 0.30)),
-                1: max(108, int(remaining * 0.21)),
-                4: max(96, remaining - max(132, int(remaining * 0.30)) - max(108, int(remaining * 0.21))),
+                0: max(126, int(remaining * 0.29)),
+                1: max(118, int(remaining * 0.24)),
+                4: max(88, remaining - max(126, int(remaining * 0.29)) - max(118, int(remaining * 0.24))),
             }
 
             used = fixed_total + sum(flexible_widths.values())
@@ -333,7 +338,7 @@ class TaskListContainer(Container):
                 for col in reduce_cols:
                     if overflow <= 0:
                         break
-                    min_width = 112 if col == 0 else (96 if col == 1 else 88)
+                    min_width = 108 if col == 0 else (104 if col == 1 else 80)
                     current = flexible_widths[col]
                     delta = min(overflow, max(0, current - min_width))
                     flexible_widths[col] = current - delta
@@ -348,6 +353,16 @@ class TaskListContainer(Container):
 
             for col, width in flexible_widths.items():
                 self.system_plan_list.setColumnWidth(col, max(0, width))
+        except Exception:
+            pass
+
+    def _reset_plan_table_horizontal_scroll(self, *_args):
+        try:
+            bar = self.system_plan_list.horizontalScrollBar()
+            if bar.value() != 0:
+                bar.blockSignals(True)
+                bar.setValue(0)
+                bar.blockSignals(False)
         except Exception:
             pass
 
@@ -645,9 +660,10 @@ class TaskListContainer(Container):
 
         holder = QWidget()
         holder_layout = QHBoxLayout(holder)
-        holder_layout.setContentsMargins(8, 0, 8, 0)
+        holder_layout.setContentsMargins(4, 0, 2, 0)
         holder_layout.setSpacing(0)
-        holder_layout.addWidget(status_button, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        holder_layout.addStretch(1)
+        holder_layout.addWidget(status_button, 0, Qt.AlignRight | Qt.AlignVCenter)
         self.system_plan_list.setCellWidget(row, 6, holder)
 
     def refresh_last_results(self):

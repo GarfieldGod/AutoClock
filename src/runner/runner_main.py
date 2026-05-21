@@ -226,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.common import TimeoutException
             from selenium.webdriver.common.by import By
+            from selenium.webdriver.support import expected_conditions as EC
 
             driver_path = args.driver_path
             show_web_page = getattr(args, "show_web_page", False)
@@ -266,6 +267,35 @@ def main(argv: list[str] | None = None) -> int:
                 import base64
                 profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
                 try:
+                    try:
+                        driver.get(DAILY_REPORT_URL)
+                    except Exception:
+                        pass
+
+                    try:
+                        WebDriverWait(driver, 12).until(
+                            lambda d: (
+                                "authen" in (d.current_url or "").lower()
+                                or "login" in (d.current_url or "").lower()
+                                or "daily" in (d.current_url or "").lower()
+                            )
+                        )
+                    except TimeoutException:
+                        pass
+
+                    if _check_authorized(driver):
+                        send_msg({"type": MSG_AUTH_SUCCESS})
+                        return True
+
+                    try:
+                        auth_btn = WebDriverWait(driver, 8).until(
+                            EC.element_to_be_clickable((By.XPATH, "//*[contains(text(),'授权') or contains(text(),'Authorize') or contains(text(),'Authorization')]"))
+                        )
+                        auth_btn.click()
+                        time.sleep(2)
+                    except Exception:
+                        pass
+
                     try:
                         WebDriverWait(driver, 15).until(
                             lambda d: (
@@ -402,14 +432,14 @@ def main(argv: list[str] | None = None) -> int:
                 if args.command == "auth_status":
                     return 0 if _check_authorized(report.driver) else 2
 
+                if interactive:
+                    return 0 if _interactive_auth(report.driver) else 2
+
                 ok, error = report._navigate_and_authorize()
                 if ok:
                     if interactive:
                         send_msg({"type": MSG_AUTH_SUCCESS})
                     return 0
-
-                if interactive:
-                    return 0 if _interactive_auth(report.driver) else 2
 
                 Log.error(error or "Auth check failed")
                 return 2

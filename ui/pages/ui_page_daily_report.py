@@ -59,6 +59,7 @@ class DailyReportPage(AutoClockPageContent):
         self._auth_check_last_ts = 0.0
         self._auth_check_last_ctx = None
         self._auth_check_cooldown_sec = 30
+        self._auth_status_initialized = False
 
     def _build_driver_section(self, parent_layout):
         group = QGroupBox("Driver")
@@ -156,7 +157,17 @@ class DailyReportPage(AutoClockPageContent):
             new_authorized = bool(authorized)
             if old_authorized is None or old_authorized != new_authorized:
                 self.set_data_func(Key.DailyAuthorized, new_authorized)
+        self._auth_status_initialized = True
         self._update_auth_status()
+
+    def _current_auth_ctx(self):
+        try:
+            w = self.window()
+            is_remote = hasattr(w, "is_remote_connected") and w.is_remote_connected()
+        except Exception:
+            is_remote = False
+        driver_path = str(self.get_data_func(Key.DriverPath, "") if self.get_data_func else "").strip()
+        return bool(is_remote), driver_path
 
     def _show_auth_checking(self):
         self._auth_status_label.setText("… Checking")
@@ -179,9 +190,7 @@ class DailyReportPage(AutoClockPageContent):
             return
 
         w = self.window()
-        is_remote = hasattr(w, "is_remote_connected") and w.is_remote_connected()
-
-        driver_path = str(self.get_data_func(Key.DriverPath, "") if self.get_data_func else "").strip()
+        is_remote, driver_path = self._current_auth_ctx()
         show_web_page = False
 
         if not is_remote and (not driver_path or not os.path.exists(driver_path)):
@@ -194,8 +203,7 @@ class DailyReportPage(AutoClockPageContent):
             return
 
         ctx = (bool(is_remote), str(driver_path).strip())
-        now = time.monotonic()
-        if self._auth_check_last_ctx == ctx and (now - self._auth_check_last_ts) < self._auth_check_cooldown_sec:
+        if self._auth_status_initialized and self._auth_check_last_ctx == ctx:
             return
 
         self._show_auth_checking()
@@ -214,7 +222,8 @@ class DailyReportPage(AutoClockPageContent):
 
     def showEvent(self, event):
         super().showEvent(event)
-        self._show_auth_checking()
+        if self._auth_status_initialized:
+            self._update_auth_status()
         self._refresh_auth_status_async()
 
     def _start_auth(self):
@@ -273,6 +282,8 @@ class DailyReportPage(AutoClockPageContent):
             self._auth_btn.setEnabled(True)
 
     def _on_auth_result(self, dialog, worker, ok, error):
+        self._auth_check_last_ts = time.monotonic()
+        self._auth_check_last_ctx = self._current_auth_ctx()
         if ok:
             dialog.show_success()
             self._set_auth_status(True)
