@@ -162,6 +162,7 @@ class TaskListContainer(Container):
         group_system = QGroupBox(f"System Plan List")
         group_system.setStyleSheet(get_group_css({}))
         layout_system = QVBoxLayout(group_system)
+        header = self.system_plan_list.horizontalHeader()
 
         self.system_plan_list.setColumnCount(7)
         self.system_plan_list.setHorizontalHeaderLabels([
@@ -176,13 +177,21 @@ class TaskListContainer(Container):
         self.system_plan_list.setCornerButtonEnabled(False)
         self.system_plan_list.verticalHeader().setVisible(False)
         self.system_plan_list.verticalHeader().setDefaultSectionSize(34)
-        self.system_plan_list.horizontalHeader().setStretchLastSection(False)
-        self.system_plan_list.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
-        self.system_plan_list.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.system_plan_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QHeaderView.Fixed)
+        header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        header.setSectionsClickable(False)
+        header.setHighlightSections(False)
+        header_font = header.font()
+        header_font.setBold(True)
+        header.setFont(header_font)
+        self.system_plan_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.system_plan_list.setStyleSheet(
             "QTableWidget { border: 1px solid #d1d5db; border-radius: 6px; background: white; }"
-            "QHeaderView::section { background: white; color: black; border: none; border-bottom: 1px solid #d1d5db; padding: 6px 8px; font-size: 10pt; text-align: left; }"
+            "QHeaderView::section { background: white; color: black; border: none; border-bottom: 1px solid #d1d5db; padding: 6px 8px; font-size: 10pt; font-weight: 700; text-align: left; }"
+            "QHeaderView::section:pressed { background: white; color: black; border: none; border-bottom: 1px solid #d1d5db; font-weight: 700; }"
+            "QHeaderView::section:checked { background: white; color: black; border: none; border-bottom: 1px solid #d1d5db; font-weight: 700; }"
+            "QHeaderView::section:selected { background: white; color: black; border: none; border-bottom: 1px solid #d1d5db; font-weight: 700; }"
             "QTableWidget::item { padding: 4px 8px; }"
         )
         self.system_plan_list.setColumnWidth(0, TaskListWidget.COL_TASK)
@@ -192,6 +201,7 @@ class TaskListContainer(Container):
         self.system_plan_list.setColumnWidth(4, TaskListWidget.COL_SCHEDULE)
         self.system_plan_list.setColumnWidth(5, TaskListWidget.COL_RESULT)
         self.system_plan_list.setColumnWidth(6, TaskListWidget.COL_STATUS)
+        self._apply_plan_table_widths()
         layout_system.addWidget(self.system_plan_list)
 
         layout_plan_list_buttons = QHBoxLayout()
@@ -294,6 +304,52 @@ class TaskListContainer(Container):
         if task[Key.TriggerType] == Key.Multiple:
             return "[Multiple]"
         return "Daily"
+
+    def _apply_plan_table_widths(self):
+        try:
+            viewport_width = max(0, self.system_plan_list.viewport().width())
+            scroll_width = self.system_plan_list.verticalScrollBar().sizeHint().width() if self.system_plan_list.verticalScrollBar().isVisible() else 0
+            total_width = max(0, viewport_width - scroll_width - 2)
+
+            fixed_widths = {
+                2: 82,
+                3: 70,
+                5: 92,
+                6: 88,
+            }
+            fixed_total = sum(fixed_widths.values())
+            remaining = max(0, total_width - fixed_total)
+
+            flexible_widths = {
+                0: max(140, int(remaining * 0.28)),
+                1: max(120, int(remaining * 0.22)),
+                4: max(130, remaining - max(140, int(remaining * 0.28)) - max(120, int(remaining * 0.22))),
+            }
+
+            used = fixed_total + sum(flexible_widths.values())
+            if used > total_width:
+                overflow = used - total_width
+                reduce_cols = [0, 1, 4]
+                for col in reduce_cols:
+                    if overflow <= 0:
+                        break
+                    min_width = 120 if col != 4 else 110
+                    current = flexible_widths[col]
+                    delta = min(overflow, max(0, current - min_width))
+                    flexible_widths[col] = current - delta
+                    overflow -= delta
+
+            used = fixed_total + sum(flexible_widths.values())
+            if used < total_width:
+                flexible_widths[4] += total_width - used
+
+            for col, width in fixed_widths.items():
+                self.system_plan_list.setColumnWidth(col, width)
+
+            for col, width in flexible_widths.items():
+                self.system_plan_list.setColumnWidth(col, max(0, width))
+        except Exception:
+            pass
 
     def check_linux_credentials(self):
         try:
@@ -520,6 +576,7 @@ class TaskListContainer(Container):
             if dict_list is None: return
 
             self.system_plan_list.setRowCount(0)
+            self._apply_plan_table_widths()
             self.task_list = []
             changed = False
             if isinstance(dict_list, list):
@@ -600,6 +657,10 @@ class TaskListContainer(Container):
             message = self._error_text(e, "Refresh last results failed")
             Log.error(message)
             MessageBox(message)
+
+    def resizeEvent(self, event):
+        super(TaskListContainer, self).resizeEvent(event)
+        self._apply_plan_table_widths()
 
 class SystemLoginContainer(Container):
     def __init__(self, x, y):

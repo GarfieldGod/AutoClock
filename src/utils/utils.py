@@ -221,7 +221,7 @@ class Utils:
             return None
 
     @staticmethod
-    def download_edge_web_driver(target_os: str | None = None, target_arch: str | None = None):
+    def download_edge_web_driver(target_os: str | None = None, target_arch: str | None = None, version: str | None = None):
         try:
             old_wdm_os = os.environ.get("WDM_OS")
             old_wdm_arch = os.environ.get("WDM_ARCH")
@@ -240,6 +240,7 @@ class Utils:
 
             Log.info("Start to download Edge Web Driver...")
             driver_path = EdgeChromiumDriverManager(
+                version=version,
                 url="https://msedgedriver.microsoft.com/",
                 latest_release_url="https://msedgedriver.microsoft.com/LATEST_RELEASE",
                 cache_manager=driver_cache

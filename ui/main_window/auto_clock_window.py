@@ -649,6 +649,21 @@ class AutoClockWindow(MainWindow):
                     tail = lines[-1] if lines else ""
                     return False, f"远端driver路径解析失败：{tail}"
 
+                version_cmd = (
+                    f'"{remote_driver_path}" --version; '
+                    f'/usr/bin/microsoft-edge --version || microsoft-edge --version || msedge --version'
+                )
+                v_code, v_out, v_err = ssh.exec(version_cmd)
+                raw_version = ((v_out or "") + "\n" + (v_err or "")).strip()
+                version_matches = re.findall(r"(\d+\.\d+\.\d+\.\d+)", raw_version)
+                if v_code != 0 or len(version_matches) < 2:
+                    return False, f"远端driver版本校验失败：{raw_version or 'unknown'}"
+
+                driver_version = version_matches[0]
+                edge_version = version_matches[1]
+                if driver_version != edge_version:
+                    return False, f"远端driver版本不匹配：edge={edge_version}, driver={driver_version}, path={remote_driver_path}"
+
             self.set_save_data(Key.DriverPath, remote_driver_path)
             self.write_data_json()
             return True, remote_driver_path

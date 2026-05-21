@@ -64,40 +64,69 @@ class DailyReport:
             raise RuntimeError(detail)
 
     def create_driver(self):
+        profile_dir = self._get_profile_dir()
+        try:
+            driver = self._start_edge_driver(profile_dir, safe_mode=False)
+            Log.info("DailyReport: create driver successfully")
+            return driver
+        except Exception as first_error:
+            if platform.system() != "Linux":
+                raise
+
+            Log.warn(f"DailyReport: first create driver attempt failed, retry with reset profile: {first_error}")
+            self._reset_profile_dir(profile_dir)
+            driver = self._start_edge_driver(profile_dir, safe_mode=True)
+            Log.info("DailyReport: create driver successfully after safe retry")
+            return driver
+
+    def _build_edge_options(self, profile_dir, safe_mode=False):
         opts = Options()
         opts.page_load_strategy = 'eager'
         if not self.config.show_web_page:
-            opts.add_argument("--headless")
+            opts.add_argument("--headless=new")
 
         if platform.system() == "Linux":
             opts.add_argument("--no-sandbox")
             opts.add_argument("--disable-dev-shm-usage")
             opts.add_argument("--disable-gpu")
-            opts.add_argument("--disable-software-rasterizer")
-            opts.add_argument("--disable-extensions")
-            opts.add_argument("--remote-debugging-port=0")
+            opts.add_argument("--enable-logging")
+            opts.add_argument("--v=1")
+            opts.add_argument("--password-store=basic")
+            opts.add_argument("--use-mock-keychain")
+            if not safe_mode:
+                opts.add_argument("--disable-software-rasterizer")
+                opts.add_argument("--disable-extensions")
 
         opts.add_argument("--window-size=1920,1080")
-        opts.add_argument("--start-maximized")
         opts.add_argument("--disable-blink-features=AutomationControlled")
         opts.add_argument("--no-first-run")
         opts.add_argument("--no-default-browser-check")
+        if self.config.show_web_page:
+            opts.add_argument("--start-maximized")
 
-        profile_dir = self._get_profile_dir()
         opts.add_argument(f"--user-data-dir={profile_dir}")
 
         edge_binary = self._find_edge_binary()
         if edge_binary:
             opts.binary_location = edge_binary
+        return opts
 
+    def _start_edge_driver(self, profile_dir, safe_mode=False):
+        opts = self._build_edge_options(profile_dir, safe_mode=safe_mode)
         service = Service(
             executable_path=self.config.driver_path,
             service_args=["--verbose"],
             log_output=self._get_driver_log_path(),
         )
-        driver = webdriver.Edge(service=service, options=opts)
-        Log.info("DailyReport: create driver successfully")
-        return driver
+        return webdriver.Edge(service=service, options=opts)
+
+    def _reset_profile_dir(self, profile_dir):
+        try:
+            if os.path.exists(profile_dir):
+                shutil.rmtree(profile_dir, ignore_errors=True)
+            os.makedirs(profile_dir, exist_ok=True)
+        except Exception as e:
+            Log.warn(f"DailyReport: reset profile dir failed: {e}")
 
     def _get_profile_dir(self):
         profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
@@ -140,6 +169,8 @@ class DailyReport:
 
     def _build_driver_failure_detail(self, error):
         parts = [str(error).strip()]
+        parts.append(f"profile_dir={self._get_profile_dir()}")
+        parts.append(f"show_web_page={self.config.show_web_page}")
 
         edge_binary = self._find_edge_binary()
         parts.append(f"edge_binary={edge_binary or 'not_found'}")

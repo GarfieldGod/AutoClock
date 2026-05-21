@@ -93,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "driver_install":
             driver_root = str(Path(args.driver_root).expanduser().resolve())
             Path(driver_root).mkdir(parents=True, exist_ok=True)
+            exact_version_error = None
 
             def _edge_version() -> str | None:
                 for cmd in [
@@ -141,22 +142,41 @@ def main(argv: list[str] | None = None) -> int:
                     raise FileNotFoundError(f"Driver not found after extract: {driver_path}")
                 return str(driver_path)
 
-            exact_version = _edge_version()
-            if exact_version:
+            def _driver_version(driver_path: str) -> str | None:
                 try:
-                    exact_driver = _download_driver(exact_version)
-                    print(exact_driver)
-                    return 0
+                    res = subprocess.run([driver_path, "--version"], capture_output=True, text=True)
+                    out = (res.stdout or res.stderr or "").strip()
+                    m = re.search(r"(\d+\.\d+\.\d+\.\d+)", out)
+                    if m:
+                        return m.group(1)
                 except Exception:
                     pass
+                return None
 
-            # Fallback to project existing logic when exact-version install is unavailable
+            def _ensure_exact_driver(driver_path: str, expected_version: str) -> str:
+                actual_version = _driver_version(driver_path)
+                if actual_version != expected_version:
+                    raise RuntimeError(
+                        f"Downloaded driver version mismatch: expected={expected_version}, actual={actual_version}, path={driver_path}"
+                    )
+                return driver_path
+
+            exact_version = _edge_version()
+            # Prefer webdriver_manager exact-version resolution first
             try:
                 from src.utils.utils import Utils
 
                 old_driver_root = AppPath.DriversRoot
                 try:
                     AppPath.DriversRoot = driver_root
+                    if exact_version:
+                        ok, result = Utils.download_edge_web_driver(version=exact_version)
+                        if ok:
+                            exact_driver = _ensure_exact_driver(str(result), exact_version)
+                            print(exact_driver)
+                            return 0
+                        exact_version_error = str(result or "")
+
                     ok, result = Utils.download_edge_web_driver()
                 finally:
                     AppPath.DriversRoot = old_driver_root
@@ -164,13 +184,27 @@ def main(argv: list[str] | None = None) -> int:
                 if ok:
                     print(result)
                     return 0
-            except Exception:
-                pass
+            except Exception as e:
+                if exact_version and not exact_version_error:
+                    exact_version_error = str(e)
+
+            if exact_version:
+                try:
+                    exact_driver = _ensure_exact_driver(_download_driver(exact_version), exact_version)
+                    print(exact_driver)
+                    return 0
+                except Exception as e:
+                    if not exact_version_error:
+                        exact_version_error = str(e)
 
             version = exact_version or _latest_release()
-            driver_path = _download_driver(version)
-            print(str(driver_path))
-            return 0
+            try:
+                driver_path = _download_driver(version)
+                print(str(driver_path))
+                return 0
+            except Exception as e:
+                suffix = f"; exact_version={exact_version}; exact_error={exact_version_error}" if exact_version else ""
+                raise RuntimeError(f"driver_install failed: {e}{suffix}")
 
         if args.command == "auth":
             from src.core.daily_report.auth_common import (
