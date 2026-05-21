@@ -1,4 +1,7 @@
 import os
+import platform
+import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from datetime import date
@@ -56,17 +59,23 @@ class DailyReport:
         try:
             self.driver = self.create_driver()
         except Exception as e:
-            Log.error(f"DailyReport: create driver error: {e}")
-            raise
+            detail = self._build_driver_failure_detail(e)
+            Log.error(f"DailyReport: create driver error: {detail}")
+            raise RuntimeError(detail)
 
     def create_driver(self):
         opts = Options()
         opts.page_load_strategy = 'eager'
         if not self.config.show_web_page:
-            opts.add_argument("--headless=new")
+            opts.add_argument("--headless")
+
+        if platform.system() == "Linux":
             opts.add_argument("--no-sandbox")
             opts.add_argument("--disable-dev-shm-usage")
             opts.add_argument("--disable-gpu")
+            opts.add_argument("--disable-software-rasterizer")
+            opts.add_argument("--disable-extensions")
+            opts.add_argument("--remote-debugging-port=0")
 
         opts.add_argument("--window-size=1920,1080")
         opts.add_argument("--start-maximized")
@@ -77,7 +86,15 @@ class DailyReport:
         profile_dir = self._get_profile_dir()
         opts.add_argument(f"--user-data-dir={profile_dir}")
 
-        service = Service(executable_path=self.config.driver_path)
+        edge_binary = self._find_edge_binary()
+        if edge_binary:
+            opts.binary_location = edge_binary
+
+        service = Service(
+            executable_path=self.config.driver_path,
+            service_args=["--verbose"],
+            log_output=self._get_driver_log_path(),
+        )
         driver = webdriver.Edge(service=service, options=opts)
         Log.info("DailyReport: create driver successfully")
         return driver
@@ -86,6 +103,60 @@ class DailyReport:
         profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
         os.makedirs(profile_dir, exist_ok=True)
         return profile_dir
+
+    def _get_driver_log_path(self):
+        log_dir = os.path.join(AppPath.DataRoot, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        return os.path.join(log_dir, "daily_report_chromedriver.log")
+
+    def _find_edge_binary(self):
+        candidates = [
+            "microsoft-edge",
+            "microsoft-edge-stable",
+            "msedge",
+            "microsoft-edge-beta",
+            "microsoft-edge-dev",
+        ]
+        for name in candidates:
+            path = shutil.which(name)
+            if path:
+                return path
+        return None
+
+    def _run_cmd_text(self, args):
+        try:
+            result = subprocess.run(args, capture_output=True, text=True, timeout=8)
+            return (result.stdout or result.stderr or "").strip()
+        except Exception:
+            return ""
+
+    def _tail_file(self, file_path, max_lines=3):
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                lines = [ln.strip() for ln in f.readlines() if ln.strip()]
+            return " | ".join(lines[-max_lines:])
+        except Exception:
+            return ""
+
+    def _build_driver_failure_detail(self, error):
+        parts = [str(error).strip()]
+
+        edge_binary = self._find_edge_binary()
+        parts.append(f"edge_binary={edge_binary or 'not_found'}")
+
+        edge_version = self._run_cmd_text([edge_binary, "--version"]) if edge_binary else ""
+        if edge_version:
+            parts.append(f"edge_version={edge_version}")
+
+        driver_version = self._run_cmd_text([self.config.driver_path, "--version"])
+        if driver_version:
+            parts.append(f"driver_version={driver_version}")
+
+        log_tail = self._tail_file(self._get_driver_log_path())
+        if log_tail:
+            parts.append(f"chromedriver_log={log_tail}")
+
+        return " | ".join([p for p in parts if p])
 
     def run(self):
         try:

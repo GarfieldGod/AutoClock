@@ -334,13 +334,13 @@ class TaskListWidget(QWidget):
         )
         label_t.setToolTip(str(task.get(Key.TriggerType, "") or ""))
         layout_plan_line.addWidget(label_t)
-        label_et = QtUI.create_label(task[Key.ExecuteTime], size=front_size, alignment=Qt.AlignCenter, fixed_width=self.COL_TIME, width_policy=QSizePolicy.Fixed, height_policy=QSizePolicy.Fixed)
+        label_et = QtUI.create_label(task[Key.ExecuteTime], size=front_size, alignment=Qt.AlignLeft, fixed_width=self.COL_TIME, width_policy=QSizePolicy.Fixed, height_policy=QSizePolicy.Fixed)
         label_et.setToolTip(str(task.get(Key.ExecuteTime, "") or ""))
         layout_plan_line.addWidget(label_et)
         label_s = QtUI.create_label(
             self._elide_text(schedule_text, self.COL_SCHEDULE, size=front_size),
             size=front_size,
-            alignment=Qt.AlignCenter,
+            alignment=Qt.AlignLeft,
             fixed_width=self.COL_SCHEDULE,
             width_policy=QSizePolicy.Fixed,
             height_policy=QSizePolicy.Fixed,
@@ -350,7 +350,7 @@ class TaskListWidget(QWidget):
         label_r = QtUI.create_label(
             self._elide_text(last_result, self.COL_RESULT, size=front_size),
             size=front_size,
-            alignment=Qt.AlignCenter,
+            alignment=Qt.AlignLeft,
             fixed_width=self.COL_RESULT,
             width_policy=QSizePolicy.Fixed,
             height_policy=QSizePolicy.Fixed,
@@ -368,7 +368,7 @@ class TaskListWidget(QWidget):
         status_holder.setFixedWidth(self.COL_STATUS)
         status_holder.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         status_layout = QHBoxLayout(status_holder)
-        status_layout.setContentsMargins(18, 0, 0, 0)
+        status_layout.setContentsMargins(0, 0, 0, 0)
         status_layout.setSpacing(0)
-        status_layout.addWidget(self._status_button, 0, Qt.AlignCenter)
+        status_layout.addWidget(self._status_button, 0, Qt.AlignLeft | Qt.AlignVCenter)
         layout_plan_line.addWidget(status_holder)

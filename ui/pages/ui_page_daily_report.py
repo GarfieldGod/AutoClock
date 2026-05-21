@@ -1,4 +1,5 @@
 import os
+import time
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget, QGroupBox, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QScrollArea, QSizePolicy, QDialog
@@ -54,6 +55,10 @@ class DailyReportPage(AutoClockPageContent):
             self.activity_type,
             self.project_module,
         ]
+        self._auth_status_worker = None
+        self._auth_check_last_ts = 0.0
+        self._auth_check_last_ctx = None
+        self._auth_check_cooldown_sec = 30
 
     def _build_driver_section(self, parent_layout):
         group = QGroupBox("Driver")
@@ -143,17 +148,90 @@ class DailyReportPage(AutoClockPageContent):
             self._auth_status_label.setText("✗ Not Authorized")
             self._auth_status_label.setStyleSheet("color: #dc2626; font-size: 12px; font-weight: 600;")
 
+    def _set_auth_status(self, authorized):
+        old_authorized = None
+        if self.get_data_func:
+            old_authorized = bool(self.get_data_func(Key.DailyAuthorized, False))
+        if self.set_data_func:
+            new_authorized = bool(authorized)
+            if old_authorized is None or old_authorized != new_authorized:
+                self.set_data_func(Key.DailyAuthorized, new_authorized)
+        self._update_auth_status()
+
+    def _show_auth_checking(self):
+        self._auth_status_label.setText("… Checking")
+        self._auth_status_label.setStyleSheet("color: #6b7280; font-size: 12px; font-weight: 600;")
+
+    def _on_auth_status_ready(self, authorized, ctx):
+        self._auth_check_last_ts = time.monotonic()
+        self._auth_check_last_ctx = ctx
+        self._set_auth_status(bool(authorized))
+
+    def _on_auth_status_error(self, _msg, ctx):
+        self._auth_check_last_ts = time.monotonic()
+        self._auth_check_last_ctx = ctx
+        self._set_auth_status(False)
+
+    def _refresh_auth_status_async(self):
+        from src.utils.utils import Utils
+        from src.core.daily_report.daily_report_manager import AuthStatusCheckWorker
+
+        if self._auth_status_worker and self._auth_status_worker.isRunning():
+            return
+
+        w = self.window()
+        is_remote = hasattr(w, "is_remote_connected") and w.is_remote_connected()
+
+        data = Utils.read_dict_from_json(AppPath.DataJson)
+        driver_path = (data.get(Key.DriverPath) or "").strip()
+        show_web_page = False
+
+        if not is_remote and (not driver_path or not os.path.exists(driver_path)):
+            self._set_auth_status(False)
+            return
+
+        ssh_cfg = getattr(w, '_remote_ssh_cfg', None) if is_remote else None
+        if is_remote and (not ssh_cfg or not driver_path):
+            self._set_auth_status(False)
+            return
+
+        ctx = (bool(is_remote), str(driver_path).strip())
+        now = time.monotonic()
+        if self._auth_check_last_ctx == ctx and (now - self._auth_check_last_ts) < self._auth_check_cooldown_sec:
+            return
+
+        self._show_auth_checking()
+
+        worker = AuthStatusCheckWorker(
+            is_remote=is_remote,
+            driver_path=driver_path,
+            show_web_page=show_web_page,
+            ssh_cfg=ssh_cfg,
+        )
+        worker.status_ready.connect(lambda ok, _ctx=ctx: self._on_auth_status_ready(ok, _ctx))
+        worker.status_error.connect(lambda msg, _ctx=ctx: self._on_auth_status_error(msg, _ctx))
+        worker.finished.connect(lambda: setattr(self, "_auth_status_worker", None))
+        self._auth_status_worker = worker
+        worker.start()
+
     def showEvent(self, event):
         super().showEvent(event)
-        self._update_auth_status()
+        self._show_auth_checking()
+        self._refresh_auth_status_async()
 
     def _start_auth(self):
         from src.utils.utils import Utils
         from src.core.daily_report.daily_report_manager import AuthWorker, RemoteAuthWorker
         from ui.dialogs.daily_auth_dialog import DailyAuthDialog
 
+        if self._auth_status_worker and self._auth_status_worker.isRunning():
+            self._auth_status_worker.wait(12000)
+
         w = self.window()
         is_remote = hasattr(w, "is_remote_connected") and w.is_remote_connected()
+        show_web_page = str(os.environ.get("AUTO_CLOCK_DEBUG_AUTH_SHOW_WEB", "")).strip().lower() in {
+            "1", "true", "yes", "on"
+        }
 
         if is_remote:
             ssh_cfg = getattr(w, '_remote_ssh_cfg', None)
@@ -165,14 +243,14 @@ class DailyReportPage(AutoClockPageContent):
             if not driver_path:
                 MessageBox("Remote driver path not configured in remote data.json.")
                 return
-            worker = RemoteAuthWorker(ssh_cfg, driver_path)
+            worker = RemoteAuthWorker(ssh_cfg, driver_path, show_web_page=show_web_page)
         else:
             data = Utils.read_dict_from_json(AppPath.DataJson)
             driver_path = (data.get(Key.DriverPath) or "").strip()
             if not driver_path or not os.path.exists(driver_path):
                 MessageBox("Please configure a valid Edge Driver Path first.")
                 return
-            worker = AuthWorker(driver_path, show_web_page=data.get(Key.ShowWebPage, False))
+            worker = AuthWorker(driver_path, show_web_page=show_web_page)
 
         dialog = DailyAuthDialog(self.window())
         dialog.set_callbacks(
@@ -197,11 +275,10 @@ class DailyReportPage(AutoClockPageContent):
     def _on_auth_result(self, dialog, worker, ok, error):
         if ok:
             dialog.show_success()
-            if self.set_data_func:
-                self.set_data_func(Key.DailyAuthorized, True)
-            self._update_auth_status()
+            self._set_auth_status(True)
         elif error:
             dialog.show_error(error)
+            self._set_auth_status(False)
             self._auth_btn.setEnabled(True)
         else:
             self._auth_btn.setEnabled(True)

@@ -2,6 +2,7 @@ import os
 import time
 import threading
 from urllib.parse import urlparse
+import subprocess
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
@@ -142,6 +143,89 @@ def fast_find_any(driver, selectors):
     return None
 
 
+class AuthStatusCheckWorker(QThread):
+    status_ready = pyqtSignal(bool)
+    status_error = pyqtSignal(str)
+
+    def __init__(self, is_remote, driver_path, show_web_page=False, ssh_cfg=None):
+        super().__init__()
+        self._is_remote = bool(is_remote)
+        self._driver_path = (driver_path or "").strip()
+        self._show_web_page = bool(show_web_page)
+        self._ssh_cfg = ssh_cfg
+
+    def run(self):
+        try:
+            if self._is_remote:
+                ok = self._check_remote_authorized()
+            else:
+                ok = self._check_local_authorized()
+            self.status_ready.emit(ok)
+        except Exception as e:
+            self.status_error.emit(str(e))
+            self.status_ready.emit(False)
+
+    def _check_local_authorized(self):
+        if not self._driver_path or not os.path.exists(self._driver_path):
+            return False
+
+        config = DailyReportConfig(
+            driver_path=self._driver_path,
+            show_web_page=self._show_web_page,
+            work_desc="",
+            normal_hours="",
+            overtime_hours="",
+            project_name="",
+            project_task="",
+            activity_type="",
+            project_module="",
+        )
+
+        report = None
+        try:
+            report = DailyReport(config)
+            driver = report.driver
+            driver.get(DAILY_REPORT_URL)
+
+            try:
+                WebDriverWait(driver, 8).until(
+                    lambda d: (
+                        "daily" in (d.current_url or "").lower()
+                        or "authen" in (d.current_url or "").lower()
+                        or "login" in (d.current_url or "").lower()
+                    )
+                )
+            except TimeoutException:
+                pass
+
+            current = (driver.current_url or "").lower()
+            if "login" in current or "authen" in current or "auth" in current:
+                return False
+            if "daily" in current:
+                form_el = fast_find_any(driver, [
+                    (By.ID, "task"),
+                    (By.ID, "proList"),
+                ])
+                return form_el is not None
+            return False
+        finally:
+            if report:
+                try:
+                    report.quit()
+                except Exception:
+                    pass
+
+    def _check_remote_authorized(self):
+        if not self._ssh_cfg or not self._driver_path:
+            return False
+
+        runner_path = f"{AppPath.RemoteAppRoot}/servers/current/auto-clock-runner"
+        cmd = f"{runner_path} auth --driver_path={self._driver_path}"
+        with SshClient(self._ssh_cfg) as ssh:
+            code, _, _ = ssh.exec(cmd, timeout_sec=180)
+            return code == 0
+
+
 class AuthWorker(QThread):
     qr_ready = pyqtSignal(bytes)
     need_phone = pyqtSignal()
@@ -213,13 +297,12 @@ class AuthWorker(QThread):
 
     def run(self):
         driver = None
+        profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
         try:
-            profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
-
-            # Kill lingering Edge processes to release file locks
-            import subprocess
-            subprocess.run(["taskkill", "/F", "/IM", "msedge.exe"], capture_output=True)
-            subprocess.run(["taskkill", "/F", "/IM", "msedgedriver.exe"], capture_output=True)
+            # Kill lingering Edge processes to release file locks (Windows only)
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/F", "/IM", "msedge.exe"], capture_output=True)
+                subprocess.run(["taskkill", "/F", "/IM", "msedgedriver.exe"], capture_output=True)
 
             # Cleanly remove any previous profile
             import shutil
@@ -327,8 +410,8 @@ class AuthWorker(QThread):
                     self.auth_success.emit()
                     return
 
-                Log.info("AuthWorker: no QR or phone form after wait - session valid")
-                self.auth_success.emit()
+                Log.warn("AuthWorker: no QR or phone form detected; cannot confirm auth")
+                self.auth_error.emit("Cannot confirm authorization state. Please retry authorization.")
                 return
 
         except Exception as e:
@@ -536,10 +619,11 @@ class RemoteAuthWorker(QThread):
     auth_success = pyqtSignal()
     auth_error = pyqtSignal(str)
 
-    def __init__(self, ssh_cfg, driver_path):
+    def __init__(self, ssh_cfg, driver_path, show_web_page=False):
         super().__init__()
         self.ssh_cfg = ssh_cfg
         self.driver_path = driver_path
+        self._show_web_page = bool(show_web_page)
         self._phone = None
         self._code = None
         self._use_phone = False
@@ -573,8 +657,9 @@ class RemoteAuthWorker(QThread):
 
         try:
             runner_path = f"{AppPath.RemoteAppRoot}/servers/current/auto-clock-runner"
-            cmd = (f"{runner_path} auth --driver_path={self.driver_path} "
-                   f"--interactive")
+            cmd = f"{runner_path} auth --driver_path={self.driver_path} --interactive"
+            if self._show_web_page:
+                cmd += " --show_web_page"
 
             Log.info(f"RemoteAuthWorker: executing: {cmd}")
 
@@ -586,8 +671,10 @@ class RemoteAuthWorker(QThread):
 
                 stdin = chan.makefile("wb")
                 stdout = chan.makefile("r")
+                stderr = chan.makefile_stderr("r")
 
                 write_buf = []
+                raw_non_json_lines = []
 
                 def _flush_writes():
                     while write_buf:
@@ -624,6 +711,7 @@ class RemoteAuthWorker(QThread):
                     try:
                         msg = _json.loads(line)
                     except _json.JSONDecodeError:
+                        raw_non_json_lines.append(line)
                         continue
 
                     msg_type = msg.get("type", "")
@@ -657,7 +745,35 @@ class RemoteAuthWorker(QThread):
                         self.auth_error.emit(msg.get("data", "Unknown error"))
                         return
 
-            Log.info("RemoteAuthWorker: SSH channel closed")
+            if self._cancel:
+                Log.info("RemoteAuthWorker: cancelled")
+                return
+
+            exit_code = -1
+            try:
+                if chan.exit_status_ready():
+                    exit_code = chan.recv_exit_status()
+            except Exception:
+                pass
+
+            err_lines = []
+            try:
+                err_content = stderr.read()
+                if err_content:
+                    err_lines.extend([ln.strip() for ln in str(err_content).splitlines() if ln.strip()])
+            except Exception:
+                pass
+
+            detail_tail = ""
+            merged_lines = raw_non_json_lines + err_lines
+            if merged_lines:
+                detail_tail = " | ".join(merged_lines[-2:])
+
+            Log.warn(f"RemoteAuthWorker: SSH channel closed unexpectedly, exit_code={exit_code}, detail={detail_tail}")
+            if detail_tail:
+                self.auth_error.emit(f"Remote auth process exited unexpectedly (code={exit_code}): {detail_tail}")
+            else:
+                self.auth_error.emit(f"Remote auth process exited unexpectedly (code={exit_code}).")
         except Exception as e:
             Log.error(f"RemoteAuthWorker error: {e}")
             self.auth_error.emit(str(e))

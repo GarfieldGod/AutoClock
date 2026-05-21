@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "auth":
             from src.core.daily_report.auth_common import (
-                clean_profile_locks, clean_profile_cache,
+                clean_profile_locks, clean_profile_cache, clean_profile_session,
                 find_element_any,
                 AUTH_QR_SELECTORS, AUTH_PHONE_SWITCH_SELECTORS, AUTH_QR_SWITCH_SELECTORS,
                 AUTH_PHONE_INPUT_SELECTORS, AUTH_PHONE_NEXT_BUTTON,
@@ -282,6 +282,8 @@ def main(argv: list[str] | None = None) -> int:
 
             profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
             clean_profile_locks(profile_dir)
+            clean_profile_cache(profile_dir)
+            clean_profile_session(profile_dir)
 
             if not driver_path or not os.path.exists(driver_path):
                 Log.error(f"Driver not found: {driver_path}")
@@ -365,6 +367,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except Exception as e:
         Log.error(str(e))
+        try:
+            sys.stderr.write(f"{e}\n")
+            sys.stderr.flush()
+        except Exception:
+            pass
         return 1
     finally:
         Log.close()

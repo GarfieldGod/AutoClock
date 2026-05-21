@@ -190,7 +190,7 @@ class TaskListContainer(Container):
                 f.setBold(False)
                 label.setFont(f)
                 label.setContentsMargins(0, 0, 0, 0)
-                label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
                 btn_refresh = QPushButton("↻")
                 btn_refresh.setFixedSize(16, 16)
@@ -203,7 +203,6 @@ class TaskListContainer(Container):
                 )
                 btn_refresh.clicked.connect(self.refresh_last_results)
 
-                holder_layout.addStretch(1)
                 holder_layout.addWidget(label)
                 holder_layout.addWidget(btn_refresh)
                 holder_layout.addStretch(1)
@@ -217,10 +216,7 @@ class TaskListContainer(Container):
             f.setBold(False)
             label.setFont(f)
             label.setContentsMargins(0, 0, 0, 0)
-            if title == "Status":
-                label.setAlignment(Qt.AlignCenter)
-            else:
-                label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             header_layout.addWidget(label, 0)
         layout_system.addLayout(header_layout)
 
