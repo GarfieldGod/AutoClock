@@ -224,7 +224,15 @@ def get_auth_page_state(driver, element_timeout=1):
     except Exception:
         current = ""
 
-    if "accounts.feishu.cn/open-apis/authen/v1/index" in current:
+    try:
+        parsed = urlparse(current)
+        host = (parsed.netloc or "").lower()
+        path = (parsed.path or "").lower()
+    except Exception:
+        host = ""
+        path = ""
+
+    if host in {"accounts.feishu.cn", "open.feishu.cn"} and path == "/open-apis/authen/v1/index":
         return "authorized"
 
     finder = find_element_any if element_timeout and element_timeout > 0 else fast_find_element_any
@@ -257,7 +265,7 @@ def get_auth_page_state(driver, element_timeout=1):
 
 
 def is_authorized(driver):
-    return get_auth_page_state(driver, element_timeout=0) == "authorized"
+    return get_auth_page_state(driver, element_timeout=1) == "authorized"
 
 
 def reset_to_qr_page(driver, daily_report_url, qr_timeout=10):

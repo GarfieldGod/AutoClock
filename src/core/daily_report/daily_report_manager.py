@@ -410,7 +410,10 @@ class AuthWorker(QThread):
                 return
             time.sleep(1)
             try:
-                if is_authorized(driver):
+                state = get_auth_page_state(driver, element_timeout=0)
+                if state == "qr_scanned":
+                    Log.info("AuthWorker: qr scanned, waiting for redirect/authorization...")
+                if state == "authorized" or is_authorized(driver):
                     self.auth_success.emit()
                     return
             except Exception:
@@ -508,9 +511,13 @@ class AuthWorker(QThread):
                 if not btn_disabled:
                     click_element(driver, send_code_btn)
                     Log.info("AuthWorker: clicked send code button")
+                    self.send_code_triggered.emit()
                     time.sleep(2)
+                else:
+                    Log.warn("AuthWorker: send code button is disabled")
             elif send_code_state.get("state") == "countdown":
                 Log.info(f"AuthWorker: send code already triggered, countdown={send_code_state.get('text', '')!r}")
+                self.send_code_triggered.emit()
             elif send_code_state.get("state") == "code_input":
                 Log.info("AuthWorker: code input visible without explicit send code button, proceeding")
             else:

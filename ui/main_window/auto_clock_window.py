@@ -676,6 +676,11 @@ class AutoClockWindow(MainWindow):
                 w = self.content.widget(i)
                 if isinstance(w, AutoClockPageContent):
                     w.set_save_data(self.set_save_data, self.get_save_data)
+                try:
+                    if w.__class__.__name__ == "DailyReportPage" and hasattr(w, "reset_auth_status"):
+                        w.reset_auth_status()
+                except Exception:
+                    pass
             self._refresh_dynamic_widgets()
         except Exception:
             pass

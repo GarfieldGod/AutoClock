@@ -358,11 +358,12 @@ def main(argv: list[str] | None = None) -> int:
                         _emit_log("interactive_auth: qr_ready sent to UI, entering scan wait loop")
                         while True:
                             try:
-                                if get_auth_page_state(driver) == "qr_scanned":
+                                state_now = get_auth_page_state(driver, element_timeout=0)
+                                if state_now == "qr_scanned":
                                     _emit_log("interactive_auth: qr page shows scan success")
-                                if _check_authorized(driver, navigate=False):
+                                if state_now == "authorized" or is_authorized(driver):
                                     state = _page_state(driver)
-                                    _emit_log(f"interactive_auth: confirmed authorized after QR scan, url={state['url']}")
+                                    _emit_log(f"interactive_auth: confirmed authorized while waiting QR loop, url={state['url']}")
                                     send_msg({"type": MSG_AUTH_SUCCESS})
                                     return True
                             except Exception:
@@ -385,10 +386,25 @@ def main(argv: list[str] | None = None) -> int:
                         send_msg({"type": MSG_AUTH_SUCCESS})
                         return True
 
+                    # Check if phone input is visible (wait for page transition)
+                    phone_input = find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=8)
+                    if phone_input is not None:
+                        state = _page_state(driver)
+                        _emit_log(f"interactive_auth: phone input found, falling back to phone login, url={state['url']} title={state['title']}")
+                        return _phone_login(driver)
+
+                    # Fallback: URL-based detection for login pages
                     if "login" in (driver.current_url or "").lower():
                         state = _page_state(driver)
-                        _emit_log(f"interactive_auth: falling back to phone login, url={state['url']} title={state['title']}")
+                        _emit_log(f"interactive_auth: login url detected, falling back to phone login, url={state['url']} title={state['title']}")
                         return _phone_login(driver)
+
+                    if _check_authorized(driver, navigate=True):
+                        state = _page_state(driver)
+                        _emit_log(f"interactive_auth: authorized after final navigate check, url={state['url']}")
+                        send_msg({"type": MSG_AUTH_SUCCESS})
+                        return True
+
                     state = _page_state(driver)
                     send_msg({"type": MSG_AUTH_ERROR, "data": f"未检测到二维码，当前页面 url={state['url']} title={state['title']}"})
                     return False
@@ -437,7 +453,7 @@ def main(argv: list[str] | None = None) -> int:
                             _click_element(driver, agree_btn, "agree")
                             _emit_log("interactive_auth: clicked agree button")
                             time.sleep(2)
-                        send_code_state = wait_for_send_code_ready_state(driver, timeout=6)
+                        send_code_state = wait_for_send_code_ready_state(driver, timeout=10)
                         send_code_btn = send_code_state.get("element")
                         if send_code_state.get("state") == "button" and send_code_btn:
                             try:
@@ -450,6 +466,8 @@ def main(argv: list[str] | None = None) -> int:
                             if not btn_disabled:
                                 _click_element(driver, send_code_btn, "send-code")
                                 _emit_log("interactive_auth: clicked send code button")
+                                if interactive:
+                                    send_msg({"type": MSG_SEND_CODE_TRIGGERED})
                                 time.sleep(2)
                         elif send_code_state.get("state") == "countdown":
                             _emit_log(f"interactive_auth: send code already triggered, countdown={send_code_state.get('text', '')!r}")

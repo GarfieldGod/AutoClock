@@ -186,6 +186,11 @@ class DailyReportPage(AutoClockPageContent):
         self._auth_status_initialized = True
         self._update_auth_status()
 
+    def reset_auth_status(self):
+        """Reset auth status cache so next showEvent triggers a fresh check."""
+        self._auth_status_initialized = False
+        self._auth_check_last_ctx = None
+
     def _current_auth_ctx(self):
         try:
             w = self.window()
@@ -201,11 +206,15 @@ class DailyReportPage(AutoClockPageContent):
         self._apply_auth_button_state("checking")
 
     def _on_auth_status_ready(self, authorized, ctx):
+        if self._current_auth_ctx() != ctx:
+            return
         self._auth_check_last_ts = time.monotonic()
         self._auth_check_last_ctx = ctx
         self._set_auth_status(bool(authorized))
 
     def _on_auth_status_error(self, _msg, ctx):
+        if self._current_auth_ctx() != ctx:
+            return
         self._auth_check_last_ts = time.monotonic()
         self._auth_check_last_ctx = ctx
         self._set_auth_status(False)
