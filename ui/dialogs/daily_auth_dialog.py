@@ -168,6 +168,10 @@ class DailyAuthDialog(QDialog):
         self._on_switch_qr_cb = on_switch_qr
         self._on_cancel_cb = on_cancel
 
+    def on_send_code_triggered(self):
+        """Called when remote confirms the verification code has been sent."""
+        self._start_send_code_countdown(60)
+
     def show_qr_loading(self):
         self._qr_loading.show()
         self._qr_image.hide()
@@ -269,7 +273,6 @@ class DailyAuthDialog(QDialog):
         self._send_code_btn.setText("Sending...")
         if self._on_phone_submit_cb:
             self._on_phone_submit_cb(phone)
-        self._start_send_code_countdown(60)
 
     def _on_verify(self):
         code = self._code_input.text().strip()

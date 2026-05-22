@@ -99,6 +99,7 @@ MSG_CODE = "code"
 MSG_SWITCH_PHONE = "switch_phone"
 MSG_SWITCH_QR = "switch_qr"
 MSG_CANCEL = "cancel"
+MSG_SEND_CODE_TRIGGERED = "send_code_triggered"
 
 
 def find_element_any(driver, selectors, timeout=3):
@@ -351,6 +352,19 @@ def find_send_code_countdown_text(driver):
 
 def wait_for_send_code_ready_state(driver, timeout=6):
     deadline = time.time() + timeout
+    # Phase 1: first 3 seconds, only check countdown and send button
+    # This gives countdown text (e.g. "59秒后...") time to appear before
+    # code_input elements are checked.
+    phase1_deadline = min(time.time() + 3, deadline)
+    while time.time() < phase1_deadline:
+        countdown_text = find_send_code_countdown_text(driver)
+        if countdown_text:
+            return {"state": "countdown", "text": countdown_text, "element": None}
+        send_btn = find_send_code_element(driver, timeout=0)
+        if send_btn is not None:
+            return {"state": "button", "text": "", "element": send_btn}
+        time.sleep(0.2)
+    # Phase 2: remaining time, also check code_input as fallback
     while time.time() < deadline:
         countdown_text = find_send_code_countdown_text(driver)
         if countdown_text:
@@ -362,6 +376,7 @@ def wait_for_send_code_ready_state(driver, timeout=6):
         if code_input is not None:
             return {"state": "code_input", "text": "", "element": code_input}
         time.sleep(0.2)
+    # Final check after timeout
     countdown_text = find_send_code_countdown_text(driver)
     if countdown_text:
         return {"state": "countdown", "text": countdown_text, "element": None}

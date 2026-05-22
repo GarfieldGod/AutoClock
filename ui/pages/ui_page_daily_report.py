@@ -303,6 +303,7 @@ class DailyReportPage(AutoClockPageContent):
         worker.qr_ready.connect(dialog.show_qr_code)
         worker.need_phone.connect(dialog.show_phone_input)
         worker.need_code.connect(dialog.show_code_input)
+        worker.send_code_triggered.connect(dialog.on_send_code_triggered)
         worker.auth_success.connect(lambda: self._on_auth_result(dialog, worker, True, None))
         worker.auth_error.connect(lambda msg: self._on_auth_result(dialog, worker, False, msg))
         worker.start()

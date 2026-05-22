@@ -223,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
                 MSG_QR_READY, MSG_NEED_PHONE, MSG_NEED_CODE,
                 MSG_AUTH_SUCCESS, MSG_AUTH_ERROR,
                 MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
+                MSG_SEND_CODE_TRIGGERED,
                 wait_auth_page_ready, get_auth_page_state, is_authorized,
                 reset_to_qr_page, click_element,
                 find_send_code_element, wait_authorized_or_select_account, wait_for_send_code_ready_state,
@@ -292,12 +293,24 @@ def main(argv: list[str] | None = None) -> int:
                 import base64
                 profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")
                 try:
+                    # Warm-up: navigate to about:blank first to reduce first-navigation overhead
+                    try:
+                        t0 = time.time()
+                        driver.get("about:blank")
+                        _emit_log(f"interactive_auth: warm-up blank page done in {time.time()-t0:.2f}s")
+                    except Exception:
+                        pass
+
+                    t0 = time.time()
                     try:
                         driver.get(DAILY_REPORT_URL)
                     except Exception:
                         pass
+                    _emit_log(f"interactive_auth: navigate to daily report done in {time.time()-t0:.2f}s")
 
-                    wait_auth_page_ready(driver, timeout=12)
+                    t0 = time.time()
+                    wait_auth_page_ready(driver, timeout=10)
+                    _emit_log(f"interactive_auth: wait_auth_page_ready done in {time.time()-t0:.2f}s")
 
                     state = _page_state(driver)
                     _emit_log(f"interactive_auth: initial state url={state['url']} title={state['title']}")
@@ -306,25 +319,32 @@ def main(argv: list[str] | None = None) -> int:
                         send_msg({"type": MSG_AUTH_SUCCESS})
                         return True
 
-                    try:
-                        auth_btn = WebDriverWait(driver, 8).until(
-                            EC.element_to_be_clickable((By.XPATH, "//*[contains(text(),'授权') or contains(text(),'Authorize') or contains(text(),'Authorization')]"))
-                        )
-                        auth_btn.click()
-                        time.sleep(2)
-                        state = _page_state(driver)
-                        _emit_log(f"interactive_auth: clicked authorize button, url={state['url']} title={state['title']}")
-                    except Exception:
-                        pass
+                    # Only look for authorize button if page is still on daily host
+                    current_state = get_auth_page_state(driver)
+                    if current_state == "daily":
+                        try:
+                            auth_btn = WebDriverWait(driver, 3).until(
+                                EC.element_to_be_clickable((By.XPATH, "//*[contains(text(),'授权') or contains(text(),'Authorize') or contains(text(),'Authorization')]"))
+                            )
+                            auth_btn.click()
+                            time.sleep(1)
+                            state = _page_state(driver)
+                            _emit_log(f"interactive_auth: clicked authorize button, url={state['url']} title={state['title']}")
+                        except Exception:
+                            pass
+                    else:
+                        _emit_log(f"interactive_auth: skip authorize button lookup, current_state={current_state}")
 
+                    t0 = time.time()
                     try:
-                        WebDriverWait(driver, 35).until(
+                        WebDriverWait(driver, 20).until(
                             lambda d: (
                                 get_auth_page_state(d) in {"authorized", "qr", "qr_scanned", "phone", "login", "authen"}
                             )
                         )
                     except TimeoutException:
                         pass
+                    _emit_log(f"interactive_auth: wait for auth page state done in {time.time()-t0:.2f}s")
 
                     state = _page_state(driver)
                     _emit_log(f"interactive_auth: waiting result url={state['url']} title={state['title']}")
@@ -433,6 +453,8 @@ def main(argv: list[str] | None = None) -> int:
                                 time.sleep(2)
                         elif send_code_state.get("state") == "countdown":
                             _emit_log(f"interactive_auth: send code already triggered, countdown={send_code_state.get('text', '')!r}")
+                            if interactive:
+                                send_msg({"type": MSG_SEND_CODE_TRIGGERED})
                         elif send_code_state.get("state") == "code_input":
                             _emit_log("interactive_auth: code input visible without explicit send code button, proceeding")
                         else:

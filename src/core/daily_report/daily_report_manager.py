@@ -19,6 +19,7 @@ from src.core.daily_report.auth_common import (
     MSG_QR_READY, MSG_NEED_PHONE, MSG_NEED_CODE,
     MSG_AUTH_SUCCESS, MSG_AUTH_ERROR,
     MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
+    MSG_SEND_CODE_TRIGGERED,
     is_daily_url, wait_auth_page_ready, get_auth_page_state, is_authorized,
     reset_to_qr_page, click_login_mode_switch, click_element,
     find_send_code_element, wait_authorized_or_select_account, wait_for_send_code_ready_state,
@@ -213,6 +214,7 @@ class AuthWorker(QThread):
     qr_ready = pyqtSignal(bytes)
     need_phone = pyqtSignal()
     need_code = pyqtSignal()
+    send_code_triggered = pyqtSignal()
     auth_success = pyqtSignal()
     auth_error = pyqtSignal(str)
 
@@ -596,6 +598,7 @@ class RemoteAuthWorker(QThread):
     qr_ready = pyqtSignal(bytes)
     need_phone = pyqtSignal()
     need_code = pyqtSignal()
+    send_code_triggered = pyqtSignal()
     auth_success = pyqtSignal()
     auth_error = pyqtSignal(str)
 
@@ -738,6 +741,9 @@ class RemoteAuthWorker(QThread):
                             continue
                         write_buf.append(_json.dumps({"type": MSG_CODE, "data": code}) + "\n")
                         _flush_writes()
+
+                    elif msg_type == MSG_SEND_CODE_TRIGGERED:
+                        self.send_code_triggered.emit()
 
                     elif msg_type == MSG_AUTH_SUCCESS:
                         self.auth_success.emit()
