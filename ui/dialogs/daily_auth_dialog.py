@@ -1,4 +1,4 @@
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QStackedWidget,
@@ -36,6 +36,10 @@ class DailyAuthDialog(QDialog):
         self._qr_png = None
         self._pending_qr_switch = False
         self._preferred_page = "qr"
+        self._send_code_countdown = 0
+        self._send_code_timer = QTimer(self)
+        self._send_code_timer.setInterval(1000)
+        self._send_code_timer.timeout.connect(self._tick_send_code_countdown)
         self._on_phone_submit_cb = None
         self._on_code_submit_cb = None
         self._on_switch_phone_cb = None
@@ -190,8 +194,8 @@ class DailyAuthDialog(QDialog):
 
     def show_code_input(self):
         self._preferred_page = "phone"
-        self._send_code_btn.setEnabled(True)
-        self._send_code_btn.setText("Send Code")
+        if self._send_code_countdown <= 0:
+            self._start_send_code_countdown(60)
         self.stack.setCurrentIndex(1)
 
     def show_success(self):
@@ -211,12 +215,37 @@ class DailyAuthDialog(QDialog):
         self._qr_png = None
         self._phone_input.clear()
         self._code_input.clear()
-        self._send_code_btn.setEnabled(True)
-        self._send_code_btn.setText("Send Code")
+        self._stop_send_code_countdown()
         self._verify_btn.setEnabled(True)
         self._verify_btn.setText("Verify")
         self._preferred_page = "qr"
         self.show_qr_loading()
+
+    def _start_send_code_countdown(self, seconds):
+        self._send_code_countdown = max(0, int(seconds))
+        self._update_send_code_button()
+        if self._send_code_countdown > 0:
+            self._send_code_timer.start()
+
+    def _stop_send_code_countdown(self):
+        self._send_code_timer.stop()
+        self._send_code_countdown = 0
+        self._update_send_code_button()
+
+    def _tick_send_code_countdown(self):
+        if self._send_code_countdown > 0:
+            self._send_code_countdown -= 1
+        if self._send_code_countdown <= 0:
+            self._send_code_timer.stop()
+        self._update_send_code_button()
+
+    def _update_send_code_button(self):
+        if self._send_code_countdown > 0:
+            self._send_code_btn.setEnabled(False)
+            self._send_code_btn.setText(f"Send Code ({self._send_code_countdown})")
+        else:
+            self._send_code_btn.setEnabled(True)
+            self._send_code_btn.setText("Send Code")
 
     # ── Internal handlers ─────────────────────────────
 
@@ -252,6 +281,7 @@ class DailyAuthDialog(QDialog):
             self._on_code_submit_cb(code)
 
     def _on_cancel(self):
+        self._send_code_timer.stop()
         if self._on_cancel_cb:
             self._on_cancel_cb()
         self.reject()

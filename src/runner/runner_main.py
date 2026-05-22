@@ -225,6 +225,7 @@ def main(argv: list[str] | None = None) -> int:
                 MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
                 wait_auth_page_ready, get_auth_page_state, is_authorized,
                 reset_to_qr_page, click_element,
+                find_send_code_element, wait_authorized_or_select_account,
             )
             from src.core.daily_report.daily_report import DailyReport, DailyReportConfig, DAILY_REPORT_URL
             from selenium.webdriver.support.ui import WebDriverWait
@@ -415,7 +416,7 @@ def main(argv: list[str] | None = None) -> int:
                             _emit_log("interactive_auth: clicked agree button")
                             time.sleep(2)
                         code_input = find_element_any(driver, AUTH_CODE_INPUT_SELECTORS, timeout=3)
-                        send_code_btn = find_element_any(driver, AUTH_SEND_CODE_SELECTORS, timeout=5)
+                        send_code_btn = find_send_code_element(driver, timeout=5)
                         if send_code_btn:
                             try:
                                 btn_text = str(send_code_btn.text or "").strip()
@@ -457,10 +458,13 @@ def main(argv: list[str] | None = None) -> int:
                             _click_element(driver, submit_btn, "submit-login")
                             time.sleep(5)
 
-                ok = _check_authorized(driver, navigate=False)
+                ok, selected_account = wait_authorized_or_select_account(driver, timeout=30, tenant_name="东软集团")
                 if ok:
                     state = _page_state(driver)
-                    _emit_log(f"interactive_auth: phone login authorized, url={state['url']} title={state['title']}")
+                    if selected_account:
+                        _emit_log(f"interactive_auth: selected tenant account 东软集团 and authorized, url={state['url']} title={state['title']}")
+                    else:
+                        _emit_log(f"interactive_auth: phone login authorized, url={state['url']} title={state['title']}")
                 else:
                     state = _page_state(driver)
                     _emit_log(f"interactive_auth: phone login not authorized, url={state['url']} title={state['title']}")

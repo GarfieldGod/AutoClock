@@ -305,3 +305,59 @@ def click_element(driver, element):
         return True
     except Exception:
         return False
+
+
+def find_send_code_element(driver, timeout=5):
+    el = find_element_any(driver, AUTH_SEND_CODE_SELECTORS, timeout=timeout)
+    if el is not None:
+        return el
+    try:
+        return driver.execute_script("""
+            const texts = ['发送验证码', '获取验证码', '重新发送', '发送', '获取'];
+            const nodes = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
+            for (const el of nodes) {
+                if (!el || !el.textContent) continue;
+                const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                if (!text) continue;
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden') continue;
+                const rect = el.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) continue;
+                if (texts.some(t => text.includes(t))) return el;
+            }
+            return null;
+        """)
+    except Exception:
+        return None
+
+
+def find_tenant_account_element(driver, tenant_name="东软集团", timeout=3):
+    selectors = [
+        (By.XPATH, f"//*[contains(@class, 'user-list-item')][.//*[contains(@class, 'tenant-name') and normalize-space()='{tenant_name}'] ]"),
+        (By.XPATH, f"//*[contains(@class, 'user-list-item-wrapper')][.//*[contains(@class, 'tenant-name') and normalize-space()='{tenant_name}'] ]"),
+        (By.XPATH, f"//*[contains(@class, 'tenant-name') and normalize-space()='{tenant_name}']/ancestor::*[@role='button' or contains(@class, 'user-list-item')][1]"),
+    ]
+    return find_element_any(driver, selectors, timeout=timeout)
+
+
+def maybe_select_tenant_account(driver, tenant_name="东软集团", timeout=2):
+    el = find_tenant_account_element(driver, tenant_name=tenant_name, timeout=timeout)
+    if el is None:
+        return False
+    if click_element(driver, el):
+        time.sleep(2)
+        return True
+    return False
+
+
+def wait_authorized_or_select_account(driver, timeout=30, tenant_name="东软集团"):
+    deadline = time.time() + timeout
+    selected = False
+    while time.time() < deadline:
+        if is_authorized(driver):
+            return True, selected
+        if maybe_select_tenant_account(driver, tenant_name=tenant_name, timeout=1):
+            selected = True
+            continue
+        time.sleep(1)
+    return is_authorized(driver), selected

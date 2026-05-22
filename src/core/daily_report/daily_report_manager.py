@@ -21,6 +21,7 @@ from src.core.daily_report.auth_common import (
     MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
     is_daily_url, wait_auth_page_ready, get_auth_page_state, is_authorized,
     reset_to_qr_page, click_login_mode_switch, click_element,
+    find_send_code_element, wait_authorized_or_select_account,
 )
 from selenium.common import TimeoutException, NoSuchElementException
 from selenium.webdriver.common.by import By
@@ -493,7 +494,7 @@ class AuthWorker(QThread):
                 Log.info("AuthWorker: no agreement modal, proceeding")
 
             code_input = find_element_any(driver, AUTH_CODE_INPUT_SELECTORS, timeout=3)
-            send_code_btn = find_element_any(driver, AUTH_SEND_CODE_SELECTORS, timeout=5)
+            send_code_btn = find_send_code_element(driver, timeout=5)
             if send_code_btn:
                 try:
                     btn_text = str(send_code_btn.text or "").strip()
@@ -537,14 +538,19 @@ class AuthWorker(QThread):
                 Log.info("AuthWorker: clicked login/submit button")
                 time.sleep(3)
 
-        # Wait for authorization redirect
-        Log.info("AuthWorker: waiting for auth redirect...")
+        # Wait for authorization redirect or account select page
+        Log.info("AuthWorker: waiting for auth redirect or account selection...")
         try:
-            WebDriverWait(driver, 30).until(
-                lambda d: is_authorized(d)
-            )
-            Log.info("AuthWorker: phone login auth successful")
-            self.auth_success.emit()
+            ok, selected_account = wait_authorized_or_select_account(driver, timeout=30, tenant_name="东软集团")
+            if ok:
+                if selected_account:
+                    Log.info("AuthWorker: selected tenant account 东软集团 and auth successful")
+                else:
+                    Log.info("AuthWorker: phone login auth successful")
+                self.auth_success.emit()
+                return
+            Log.warn("AuthWorker: phone login auth timeout")
+            self.auth_error.emit("Login timed out. Please try again.")
         except TimeoutException:
             Log.warn("AuthWorker: phone login auth timeout")
             self.auth_error.emit("Login timed out. Please try again.")
