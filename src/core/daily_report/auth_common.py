@@ -110,6 +110,21 @@ def find_element_any(driver, selectors, timeout=3):
     return None
 
 
+def fast_find_element_any(driver, selectors):
+    for by, sel in selectors:
+        try:
+            elements = driver.find_elements(by, sel)
+            for el in elements:
+                try:
+                    if el.is_displayed():
+                        return el
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    return None
+
+
 def clean_profile_locks(profile_dir):
     lock_files = ["SingletonLock", "SingletonSocket", "SingletonCookie"]
     for subdir in ["", "Default"]:
@@ -191,13 +206,7 @@ def wait_auth_page_ready(driver, timeout=10):
     try:
         WebDriverWait(driver, timeout).until(
             lambda d: (
-                is_authorized(d)
-                or find_element_any(d, AUTH_QR_SELECTORS, timeout=1) is not None
-                or find_element_any(d, AUTH_PHONE_INPUT_SELECTORS, timeout=1) is not None
-                or find_element_any(d, AUTH_QR_SUCCESS_SELECTORS, timeout=1) is not None
-                or "login" in ((d.current_url or "").lower())
-                or "authen" in ((d.current_url or "").lower())
-                or is_daily_url(d.current_url or "")
+                get_auth_page_state(d, element_timeout=0) in {"authorized", "qr", "qr_scanned", "phone", "login", "authen", "daily"}
             )
         )
     except TimeoutException:
@@ -213,19 +222,24 @@ def get_auth_page_state(driver, element_timeout=1):
     if "accounts.feishu.cn/open-apis/authen/v1/index" in current:
         return "authorized"
 
+    finder = find_element_any if element_timeout and element_timeout > 0 else fast_find_element_any
+
     if is_daily_url(current):
-        auth_el = find_element_any(driver, AUTH_AUTHORIZED_SELECTORS, timeout=element_timeout)
+        auth_el = finder(driver, AUTH_AUTHORIZED_SELECTORS) if finder is fast_find_element_any else finder(driver, AUTH_AUTHORIZED_SELECTORS, timeout=element_timeout)
         if auth_el is not None:
             return "authorized"
         return "daily"
 
-    if find_element_any(driver, AUTH_QR_SUCCESS_SELECTORS, timeout=element_timeout) is not None:
+    qr_success_el = finder(driver, AUTH_QR_SUCCESS_SELECTORS) if finder is fast_find_element_any else finder(driver, AUTH_QR_SUCCESS_SELECTORS, timeout=element_timeout)
+    if qr_success_el is not None:
         return "qr_scanned"
 
-    if find_element_any(driver, AUTH_QR_SELECTORS, timeout=element_timeout) is not None:
+    qr_el = finder(driver, AUTH_QR_SELECTORS) if finder is fast_find_element_any else finder(driver, AUTH_QR_SELECTORS, timeout=element_timeout)
+    if qr_el is not None:
         return "qr"
 
-    if find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=element_timeout) is not None:
+    phone_el = finder(driver, AUTH_PHONE_INPUT_SELECTORS) if finder is fast_find_element_any else finder(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=element_timeout)
+    if phone_el is not None:
         return "phone"
 
     if "login" in current:
@@ -238,7 +252,7 @@ def get_auth_page_state(driver, element_timeout=1):
 
 
 def is_authorized(driver):
-    return get_auth_page_state(driver, element_timeout=1) == "authorized"
+    return get_auth_page_state(driver, element_timeout=0) == "authorized"
 
 
 def reset_to_qr_page(driver, daily_report_url, qr_timeout=10):
@@ -274,3 +288,20 @@ def click_login_mode_switch(driver):
             pass
         time.sleep(1)
     return False
+
+
+def click_element(driver, element):
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+    except Exception:
+        pass
+    try:
+        element.click()
+        return True
+    except Exception:
+        pass
+    try:
+        driver.execute_script("arguments[0].click();", element)
+        return True
+    except Exception:
+        return False

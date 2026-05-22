@@ -20,7 +20,7 @@ from src.core.daily_report.auth_common import (
     MSG_AUTH_SUCCESS, MSG_AUTH_ERROR,
     MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
     is_daily_url, wait_auth_page_ready, get_auth_page_state, is_authorized,
-    reset_to_qr_page, click_login_mode_switch,
+    reset_to_qr_page, click_login_mode_switch, click_element,
 )
 from selenium.common import TimeoutException, NoSuchElementException
 from selenium.webdriver.common.by import By
@@ -479,18 +479,37 @@ class AuthWorker(QThread):
             # Click "下一步" (auto-triggers verification code)
             next_btn = find_element_any(driver, AUTH_PHONE_NEXT_BUTTON, timeout=5)
             if next_btn:
-                next_btn.click()
+                click_element(driver, next_btn)
                 Log.info("AuthWorker: clicked next button")
                 time.sleep(1)
 
             # Click "同意" if agreement modal appears
             agree_btn = find_element_any(driver, AUTH_AGREE_BUTTON, timeout=3)
             if agree_btn:
-                agree_btn.click()
+                click_element(driver, agree_btn)
                 Log.info("AuthWorker: clicked agree button")
                 time.sleep(2)
             else:
                 Log.info("AuthWorker: no agreement modal, proceeding")
+
+            code_input = find_element_any(driver, AUTH_CODE_INPUT_SELECTORS, timeout=3)
+            send_code_btn = find_element_any(driver, AUTH_SEND_CODE_SELECTORS, timeout=5)
+            if send_code_btn:
+                try:
+                    btn_text = str(send_code_btn.text or "").strip()
+                    btn_disabled = bool(send_code_btn.get_attribute("disabled")) or str(send_code_btn.get_attribute("aria-disabled") or "").lower() == "true"
+                except Exception:
+                    btn_text = ""
+                    btn_disabled = False
+                Log.info(f"AuthWorker: send code button found, text={btn_text!r}, disabled={btn_disabled}")
+                if not btn_disabled:
+                    click_element(driver, send_code_btn)
+                    Log.info("AuthWorker: clicked send code button")
+                    time.sleep(2)
+            elif code_input:
+                Log.info("AuthWorker: code input already visible, no send code button found")
+            else:
+                Log.info("AuthWorker: neither code input nor send code button found yet")
 
         # Wait for verification code
         self.need_code.emit()
@@ -514,7 +533,7 @@ class AuthWorker(QThread):
             Log.info("AuthWorker: no code input found, trying submit button")
             submit_btn = find_element_any(driver, AUTH_SUBMIT_SELECTORS, timeout=3)
             if submit_btn:
-                submit_btn.click()
+                click_element(driver, submit_btn)
                 Log.info("AuthWorker: clicked login/submit button")
                 time.sleep(3)
 

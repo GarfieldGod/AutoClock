@@ -224,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
                 MSG_AUTH_SUCCESS, MSG_AUTH_ERROR,
                 MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
                 wait_auth_page_ready, get_auth_page_state, is_authorized,
-                reset_to_qr_page,
+                reset_to_qr_page, click_element,
             )
             from src.core.daily_report.daily_report import DailyReport, DailyReportConfig, DAILY_REPORT_URL
             from selenium.webdriver.support.ui import WebDriverWait
@@ -261,23 +261,12 @@ def main(argv: list[str] | None = None) -> int:
                 return recv_msg()
 
             def _click_element(driver, element, label):
-                try:
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                except Exception:
-                    pass
-                try:
-                    element.click()
-                    Log.info(f"interactive_auth: clicked {label} via native click")
-                    return True
-                except Exception as native_error:
-                    Log.warn(f"interactive_auth: native click failed for {label}: {native_error}")
-                try:
-                    driver.execute_script("arguments[0].click();", element)
-                    Log.info(f"interactive_auth: clicked {label} via js click")
-                    return True
-                except Exception as js_error:
-                    Log.warn(f"interactive_auth: js click failed for {label}: {js_error}")
-                return False
+                ok = click_element(driver, element)
+                if ok:
+                    Log.info(f"interactive_auth: clicked {label}")
+                else:
+                    Log.warn(f"interactive_auth: failed to click {label}")
+                return ok
 
             def _page_state(driver):
                 try:
@@ -425,6 +414,24 @@ def main(argv: list[str] | None = None) -> int:
                             _click_element(driver, agree_btn, "agree")
                             _emit_log("interactive_auth: clicked agree button")
                             time.sleep(2)
+                        code_input = find_element_any(driver, AUTH_CODE_INPUT_SELECTORS, timeout=3)
+                        send_code_btn = find_element_any(driver, AUTH_SEND_CODE_SELECTORS, timeout=5)
+                        if send_code_btn:
+                            try:
+                                btn_text = str(send_code_btn.text or "").strip()
+                                btn_disabled = bool(send_code_btn.get_attribute("disabled")) or str(send_code_btn.get_attribute("aria-disabled") or "").lower() == "true"
+                            except Exception:
+                                btn_text = ""
+                                btn_disabled = False
+                            _emit_log(f"interactive_auth: send code button found, text={btn_text!r}, disabled={btn_disabled}")
+                            if not btn_disabled:
+                                _click_element(driver, send_code_btn, "send-code")
+                                _emit_log("interactive_auth: clicked send code button")
+                                time.sleep(2)
+                        elif code_input:
+                            _emit_log("interactive_auth: code input already visible, no send code button found")
+                        else:
+                            _emit_log("interactive_auth: neither code input nor send code button found yet")
                         state = _page_state(driver)
                         _emit_log(f"interactive_auth: waiting for code input, url={state['url']} title={state['title']}")
                     else:

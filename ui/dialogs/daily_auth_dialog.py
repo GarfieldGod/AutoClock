@@ -35,6 +35,7 @@ class DailyAuthDialog(QDialog):
         self._code = None
         self._qr_png = None
         self._pending_qr_switch = False
+        self._preferred_page = "qr"
         self._on_phone_submit_cb = None
         self._on_code_submit_cb = None
         self._on_switch_phone_cb = None
@@ -166,7 +167,8 @@ class DailyAuthDialog(QDialog):
     def show_qr_loading(self):
         self._qr_loading.show()
         self._qr_image.hide()
-        self.stack.setCurrentIndex(0)
+        if self._preferred_page != "phone":
+            self.stack.setCurrentIndex(0)
 
     def show_qr_code(self, png_bytes):
         self._pending_qr_switch = False
@@ -177,19 +179,23 @@ class DailyAuthDialog(QDialog):
         self._qr_image.setPixmap(scaled)
         self._qr_image.show()
         self._qr_loading.hide()
-        self.stack.setCurrentIndex(0)
+        if self._preferred_page != "phone":
+            self.stack.setCurrentIndex(0)
 
     def show_phone_input(self):
+        self._preferred_page = "phone"
         if self._pending_qr_switch:
             return
         self.stack.setCurrentIndex(1)
 
     def show_code_input(self):
+        self._preferred_page = "phone"
         self._send_code_btn.setEnabled(True)
         self._send_code_btn.setText("Send Code")
         self.stack.setCurrentIndex(1)
 
     def show_success(self):
+        self._preferred_page = "success"
         self.stack.setCurrentIndex(2)
         from PyQt5.QtCore import QTimer
         QTimer.singleShot(2000, self.accept)
@@ -209,16 +215,19 @@ class DailyAuthDialog(QDialog):
         self._send_code_btn.setText("Send Code")
         self._verify_btn.setEnabled(True)
         self._verify_btn.setText("Verify")
+        self._preferred_page = "qr"
         self.show_qr_loading()
 
     # ── Internal handlers ─────────────────────────────
 
     def _on_switch_phone_click(self):
+        self._preferred_page = "phone"
         if self._on_switch_phone_cb:
             self._on_switch_phone_cb()
         self.show_phone_input()
 
     def _on_switch_qr_click(self):
+        self._preferred_page = "qr"
         self._pending_qr_switch = True
         self.show_qr_loading()
         if self._on_switch_qr_cb:

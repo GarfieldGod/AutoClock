@@ -120,13 +120,6 @@ class DailyReportPage(AutoClockPageContent):
 
         btn_layout = QHBoxLayout()
         self._auth_btn = QPushButton("Authorization")
-        self._auth_btn.setStyleSheet(
-            "QPushButton { background: #2563eb; color: white; border: none; "
-            "border-radius: 6px; padding: 8px 20px; font-weight: 600; font-size: 13px; }"
-            "QPushButton:hover { background: #1d4ed8; }"
-            "QPushButton:pressed { background: #1e40af; }"
-            "QPushButton:disabled { background: #93c5fd; }"
-        )
         self._auth_btn.clicked.connect(self._start_auth)
         btn_layout.addWidget(self._auth_btn)
 
@@ -138,6 +131,37 @@ class DailyReportPage(AutoClockPageContent):
 
         parent_layout.addWidget(group)
 
+    def _apply_auth_button_state(self, state):
+        if state == "checking":
+            self._auth_btn.setText("Checking...")
+            self._auth_btn.setEnabled(False)
+            self._auth_btn.setStyleSheet(
+                "QPushButton { background: #9ca3af; color: white; border: none; "
+                "border-radius: 6px; padding: 8px 20px; font-weight: 600; font-size: 13px; }"
+                "QPushButton:disabled { background: #9ca3af; color: white; }"
+            )
+            return
+        if state == "authorized":
+            self._auth_btn.setText("Re-authorization")
+            self._auth_btn.setEnabled(True)
+            self._auth_btn.setStyleSheet(
+                "QPushButton { background: #f59e0b; color: white; border: none; "
+                "border-radius: 6px; padding: 8px 20px; font-weight: 600; font-size: 13px; }"
+                "QPushButton:hover { background: #d97706; }"
+                "QPushButton:pressed { background: #b45309; }"
+                "QPushButton:disabled { background: #fcd34d; }"
+            )
+            return
+        self._auth_btn.setText("Authorization")
+        self._auth_btn.setEnabled(True)
+        self._auth_btn.setStyleSheet(
+            "QPushButton { background: #2563eb; color: white; border: none; "
+            "border-radius: 6px; padding: 8px 20px; font-weight: 600; font-size: 13px; }"
+            "QPushButton:hover { background: #1d4ed8; }"
+            "QPushButton:pressed { background: #1e40af; }"
+            "QPushButton:disabled { background: #93c5fd; }"
+        )
+
     def _update_auth_status(self):
         if not self.get_data_func:
             return
@@ -145,9 +169,11 @@ class DailyReportPage(AutoClockPageContent):
         if authorized:
             self._auth_status_label.setText("✓ Authorized")
             self._auth_status_label.setStyleSheet("color: #16a34a; font-size: 12px; font-weight: 600;")
+            self._apply_auth_button_state("authorized")
         else:
             self._auth_status_label.setText("✗ Not Authorized")
             self._auth_status_label.setStyleSheet("color: #dc2626; font-size: 12px; font-weight: 600;")
+            self._apply_auth_button_state("unauthorized")
 
     def _set_auth_status(self, authorized):
         old_authorized = None
@@ -172,6 +198,7 @@ class DailyReportPage(AutoClockPageContent):
     def _show_auth_checking(self):
         self._auth_status_label.setText("… Checking")
         self._auth_status_label.setStyleSheet("color: #6b7280; font-size: 12px; font-weight: 600;")
+        self._apply_auth_button_state("checking")
 
     def _on_auth_status_ready(self, authorized, ctx):
         self._auth_check_last_ts = time.monotonic()
@@ -233,6 +260,10 @@ class DailyReportPage(AutoClockPageContent):
         if self._auth_status_worker and self._auth_status_worker.isRunning():
             self._auth_status_worker.wait(12000)
 
+        was_authorized = bool(self.get_data_func(Key.DailyAuthorized, False)) if self.get_data_func else False
+        if was_authorized:
+            self._set_auth_status(False)
+
         w = self.window()
         is_remote = hasattr(w, "is_remote_connected") and w.is_remote_connected()
         show_web_page = str(os.environ.get("AUTO_CLOCK_DEBUG_AUTH_SHOW_WEB", "")).strip().lower() in {
@@ -275,11 +306,9 @@ class DailyReportPage(AutoClockPageContent):
         worker.auth_success.connect(lambda: self._on_auth_result(dialog, worker, True, None))
         worker.auth_error.connect(lambda msg: self._on_auth_result(dialog, worker, False, msg))
         worker.start()
-
-        self._auth_btn.setEnabled(False)
         dialog.exec_()
         if dialog.result() != QDialog.Accepted:
-            self._auth_btn.setEnabled(True)
+            self._refresh_auth_status_async()
 
     def _on_auth_result(self, dialog, worker, ok, error):
         self._auth_check_last_ts = time.monotonic()
@@ -289,10 +318,9 @@ class DailyReportPage(AutoClockPageContent):
             self._set_auth_status(True)
         elif error:
             dialog.show_error(error)
-            self._set_auth_status(False)
-            self._auth_btn.setEnabled(True)
+            self._refresh_auth_status_async()
         else:
-            self._auth_btn.setEnabled(True)
+            self._refresh_auth_status_async()
 
     def _build_template_section(self, parent_layout):
         group = QGroupBox("Daily Report")
