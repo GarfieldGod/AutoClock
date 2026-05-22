@@ -215,14 +215,16 @@ def main(argv: list[str] | None = None) -> int:
             from src.core.daily_report.auth_common import (
                 clean_profile_locks, clean_profile_cache, clean_profile_session,
                 find_element_any,
-                AUTH_QR_SELECTORS, AUTH_QR_SUCCESS_SELECTORS, AUTH_PHONE_SWITCH_SELECTORS, AUTH_QR_SWITCH_SELECTORS,
+                AUTH_QR_SELECTORS, AUTH_PHONE_SWITCH_SELECTORS, AUTH_QR_SWITCH_SELECTORS,
                 AUTH_PHONE_INPUT_SELECTORS, AUTH_PHONE_NEXT_BUTTON,
                 AUTH_CODE_INPUT_SELECTORS,
-                AUTH_SEND_CODE_SELECTORS, AUTH_SUBMIT_SELECTORS, AUTH_AGREE_BUTTON, AUTH_AUTHORIZED_SELECTORS,
+                AUTH_SEND_CODE_SELECTORS, AUTH_SUBMIT_SELECTORS, AUTH_AGREE_BUTTON,
                 send_msg, recv_msg,
                 MSG_QR_READY, MSG_NEED_PHONE, MSG_NEED_CODE,
                 MSG_AUTH_SUCCESS, MSG_AUTH_ERROR,
                 MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
+                wait_auth_page_ready, get_auth_page_state, is_authorized,
+                reset_to_qr_page,
             )
             from src.core.daily_report.daily_report import DailyReport, DailyReportConfig, DAILY_REPORT_URL
             from selenium.webdriver.support.ui import WebDriverWait
@@ -237,27 +239,8 @@ def main(argv: list[str] | None = None) -> int:
             def _check_authorized(driver, navigate=True):
                 if navigate:
                     driver.get(DAILY_REPORT_URL)
-                try:
-                    WebDriverWait(driver, 10).until(
-                        lambda d: (
-                            "daily" in (d.current_url or "").lower()
-                            or "authen" in (d.current_url or "").lower()
-                            or "login" in (d.current_url or "").lower()
-                        )
-                    )
-                except TimeoutException:
-                    pass
-
-                current = (driver.current_url or "").lower()
-                if "login" in current:
-                    return False
-                if "accounts.feishu.cn/open-apis/authen/v1/index" in current:
-                    return True
-                if "daily" in current:
-                    auth_el = find_element_any(driver, AUTH_AUTHORIZED_SELECTORS, timeout=1)
-                    if auth_el is not None:
-                        return True
-                return False
+                wait_auth_page_ready(driver, timeout=10)
+                return is_authorized(driver)
 
             def _emit_log(message):
                 Log.info(message)
@@ -307,15 +290,7 @@ def main(argv: list[str] | None = None) -> int:
 
             def _go_back_to_qr(driver):
                 _emit_log("interactive_auth: clearing storage and reloading for qr login")
-                try:
-                    driver.execute_script("""
-                        try { sessionStorage.clear(); } catch(e) {}
-                        try { localStorage.clear(); } catch(e) {}
-                    """)
-                except Exception:
-                    pass
-                driver.get(DAILY_REPORT_URL)
-                qr_element = find_element_any(driver, AUTH_QR_SELECTORS, timeout=15)
+                qr_element = reset_to_qr_page(driver, DAILY_REPORT_URL, qr_timeout=15)
                 if qr_element is not None:
                     _emit_log("interactive_auth: qr visible again after reset")
                     return True
@@ -332,16 +307,7 @@ def main(argv: list[str] | None = None) -> int:
                     except Exception:
                         pass
 
-                    try:
-                        WebDriverWait(driver, 12).until(
-                            lambda d: (
-                                "authen" in (d.current_url or "").lower()
-                                or "login" in (d.current_url or "").lower()
-                                or "daily" in (d.current_url or "").lower()
-                            )
-                        )
-                    except TimeoutException:
-                        pass
+                    wait_auth_page_ready(driver, timeout=12)
 
                     state = _page_state(driver)
                     _emit_log(f"interactive_auth: initial state url={state['url']} title={state['title']}")
@@ -364,10 +330,7 @@ def main(argv: list[str] | None = None) -> int:
                     try:
                         WebDriverWait(driver, 35).until(
                             lambda d: (
-                                find_element_any(d, AUTH_QR_SELECTORS, timeout=1) is not None
-                                or find_element_any(d, AUTH_PHONE_INPUT_SELECTORS, timeout=1) is not None
-                                or _check_authorized(d, navigate=False)
-                                or "login" in (d.current_url or "").lower()
+                                get_auth_page_state(d) in {"authorized", "qr", "qr_scanned", "phone", "login", "authen"}
                             )
                         )
                     except TimeoutException:
@@ -383,7 +346,7 @@ def main(argv: list[str] | None = None) -> int:
                         _emit_log("interactive_auth: qr_ready sent to UI, entering scan wait loop")
                         while True:
                             try:
-                                if find_element_any(driver, AUTH_QR_SUCCESS_SELECTORS, timeout=1) is not None:
+                                if get_auth_page_state(driver) == "qr_scanned":
                                     _emit_log("interactive_auth: qr page shows scan success")
                                 if _check_authorized(driver, navigate=False):
                                     state = _page_state(driver)

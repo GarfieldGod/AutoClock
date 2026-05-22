@@ -19,6 +19,8 @@ from src.core.daily_report.auth_common import (
     MSG_QR_READY, MSG_NEED_PHONE, MSG_NEED_CODE,
     MSG_AUTH_SUCCESS, MSG_AUTH_ERROR,
     MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
+    is_daily_url, wait_auth_page_ready, get_auth_page_state, is_authorized,
+    reset_to_qr_page, click_login_mode_switch,
 )
 from selenium.common import TimeoutException, NoSuchElementException
 from selenium.webdriver.common.by import By
@@ -186,28 +188,8 @@ class AuthStatusCheckWorker(QThread):
             report = DailyReport(config)
             driver = report.driver
             driver.get(DAILY_REPORT_URL)
-
-            try:
-                WebDriverWait(driver, 8).until(
-                    lambda d: (
-                        "daily" in (d.current_url or "").lower()
-                        or "authen" in (d.current_url or "").lower()
-                        or "login" in (d.current_url or "").lower()
-                    )
-                )
-            except TimeoutException:
-                pass
-
-            current = (driver.current_url or "").lower()
-            if "login" in current or "authen" in current or "auth" in current:
-                return False
-            if "daily" in current:
-                form_el = fast_find_any(driver, [
-                    (By.ID, "task"),
-                    (By.ID, "proList"),
-                ])
-                return form_el is not None
-            return False
+            wait_auth_page_ready(driver, timeout=8)
+            return is_authorized(driver)
         finally:
             if report:
                 try:
@@ -274,32 +256,15 @@ class AuthWorker(QThread):
     def _click_switch(self, driver):
         """Reliably click the QR/phone toggle button using real mouse click via ActionChains.
         Uses JS to find the visible .switch-login-mode-box (there may be two in DOM, one hidden)."""
-        for _ in range(3):
-            try:
-                el = driver.execute_script("""
-                    var boxes = document.querySelectorAll('div.switch-login-mode-box');
-                    for (var i = 0; i < boxes.length; i++) {
-                        if (boxes[i].offsetParent !== null) return boxes[i];
-                    }
-                    return null;
-                """)
-                if el:
-                    ActionChains(driver).move_to_element(el).click().perform()
-                    time.sleep(2)
-                    Log.info("AuthWorker: clicked switch button via ActionChains")
-                    return True
-            except Exception:
-                pass
-            time.sleep(1)
+        ok = click_login_mode_switch(driver)
+        if ok:
+            Log.info("AuthWorker: clicked switch button via shared switch helper")
+            return True
         Log.warn("AuthWorker: switch button not found after 3 attempts")
         return False
 
     def _is_daily_url(self, url):
-        try:
-            parsed = urlparse(url)
-            return "daily" in (parsed.netloc + parsed.path).lower()
-        except Exception:
-            return False
+        return is_daily_url(url)
 
     def run(self):
         driver = None
@@ -338,44 +303,24 @@ class AuthWorker(QThread):
             Log.info("AuthWorker: navigating to daily report URL...")
             driver.get(DAILY_REPORT_URL)
 
-            # Wait up to 5s for redirect chain to settle
-            try:
-                WebDriverWait(driver, 5).until(
-                    lambda d: (self._is_daily_url(d.current_url or "") or
-                               "authen" in (d.current_url or "").lower() or
-                               "login" in (d.current_url or "").lower())
-                )
-            except TimeoutException:
-                pass
+            wait_auth_page_ready(driver, timeout=8)
 
             final_url = (driver.current_url or "").lower()
             Log.info(f"AuthWorker: final URL type: {self._classify_url(final_url)}")
 
-            # ── On daily host without form → fall through to content check ──
-            if self._is_daily_url(driver.current_url or ""):
-                form_el = fast_find_any(driver, [
-                    (By.ID, "task"),
-                    (By.ID, "proList"),
-                ])
-                if form_el:
-                    Log.info("AuthWorker: on daily form page - authorized")
-                    self.auth_success.emit()
-                    return
-                Log.info("AuthWorker: daily host without form, checking content...")
+            if is_authorized(driver):
+                Log.info("AuthWorker: current page already satisfies authorization")
+                self.auth_success.emit()
+                return
+
+            state = get_auth_page_state(driver)
+            if state == "daily":
+                Log.info("AuthWorker: daily host without authorized markers, checking content...")
 
             # ── Check page content for QR or phone login form ──
             Log.info("AuthWorker: checking page content for auth state...")
 
-            # Wait up to 5s for elements to render (JS may take time)
-            try:
-                WebDriverWait(driver, 5).until(
-                    lambda d: (
-                        fast_find_any(d, AUTH_QR_SELECTORS + AUTH_PHONE_INPUT_SELECTORS) is not None
-                        or self._is_daily_url(d.current_url or "")
-                    )
-                )
-            except TimeoutException:
-                pass
+            wait_auth_page_ready(driver, timeout=5)
 
             while True:
                 Log.info("AuthWorker: main auth loop iteration")
@@ -383,6 +328,11 @@ class AuthWorker(QThread):
                     Log.info("AuthWorker: cancelled in main loop")
                     return
                 time.sleep(0.5)
+                state = get_auth_page_state(driver)
+                if state == "authorized":
+                    Log.info("AuthWorker: authorized detected in main loop")
+                    self.auth_success.emit()
+                    return
                 Log.info("AuthWorker: scanning for QR...")
                 qr_element = fast_find_any(driver, AUTH_QR_SELECTORS)
                 if qr_element:
@@ -398,7 +348,7 @@ class AuthWorker(QThread):
                                 Log.info("AuthWorker: restarting auth loop from QR")
                                 continue
                         return
-                    if self._is_daily_url(driver.current_url or ""):
+                    if is_authorized(driver):
                         Log.info("AuthWorker: auth completed during QR wait")
                         self.auth_success.emit()
                         return
@@ -412,7 +362,7 @@ class AuthWorker(QThread):
                     self._do_phone_login(driver)
                     return
 
-                if self._is_daily_url(driver.current_url or ""):
+                if is_authorized(driver):
                     Log.info("AuthWorker: redirected to daily during wait - authorized")
                     self.auth_success.emit()
                     return
@@ -457,7 +407,7 @@ class AuthWorker(QThread):
                 return
             time.sleep(1)
             try:
-                if self._is_daily_url(driver.current_url or ""):
+                if is_authorized(driver):
                     self.auth_success.emit()
                     return
             except Exception:
@@ -572,7 +522,7 @@ class AuthWorker(QThread):
         Log.info("AuthWorker: waiting for auth redirect...")
         try:
             WebDriverWait(driver, 30).until(
-                lambda d: "daily" in (d.current_url or "")
+                lambda d: is_authorized(d)
             )
             Log.info("AuthWorker: phone login auth successful")
             self.auth_success.emit()
@@ -583,12 +533,7 @@ class AuthWorker(QThread):
     def _go_back_to_qr(self, driver):
         """Clear storage and reload auth page to show QR by default. Sets _restart flag so outer loop re-enters auth flow."""
         Log.info("AuthWorker: clearing storage and reloading for QR login")
-        driver.execute_script("""
-            try { sessionStorage.clear(); } catch(e) {}
-            try { localStorage.clear(); } catch(e) {}
-        """)
-        driver.get(DAILY_REPORT_URL)
-        qr_element = find_element_any(driver, AUTH_QR_SELECTORS, timeout=10)
+        qr_element = reset_to_qr_page(driver, DAILY_REPORT_URL, qr_timeout=10)
         if qr_element:
             Log.info("AuthWorker: back to QR login")
             self.qr_ready.emit(qr_element.screenshot_as_png)

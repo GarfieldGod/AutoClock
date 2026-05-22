@@ -5,8 +5,10 @@ import time
 import json
 import base64
 import shutil
+from urllib.parse import urlparse
 
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -175,3 +177,100 @@ def recv_msg():
         return json.loads(line.strip())
     except json.JSONDecodeError:
         return None
+
+
+def is_daily_url(url):
+    try:
+        parsed = urlparse(url)
+        return "daily" in (parsed.netloc + parsed.path).lower()
+    except Exception:
+        return False
+
+
+def wait_auth_page_ready(driver, timeout=10):
+    try:
+        WebDriverWait(driver, timeout).until(
+            lambda d: (
+                is_authorized(d)
+                or find_element_any(d, AUTH_QR_SELECTORS, timeout=1) is not None
+                or find_element_any(d, AUTH_PHONE_INPUT_SELECTORS, timeout=1) is not None
+                or find_element_any(d, AUTH_QR_SUCCESS_SELECTORS, timeout=1) is not None
+                or "login" in ((d.current_url or "").lower())
+                or "authen" in ((d.current_url or "").lower())
+                or is_daily_url(d.current_url or "")
+            )
+        )
+    except TimeoutException:
+        pass
+
+
+def get_auth_page_state(driver, element_timeout=1):
+    try:
+        current = (driver.current_url or "").lower()
+    except Exception:
+        current = ""
+
+    if "accounts.feishu.cn/open-apis/authen/v1/index" in current:
+        return "authorized"
+
+    if is_daily_url(current):
+        auth_el = find_element_any(driver, AUTH_AUTHORIZED_SELECTORS, timeout=element_timeout)
+        if auth_el is not None:
+            return "authorized"
+        return "daily"
+
+    if find_element_any(driver, AUTH_QR_SUCCESS_SELECTORS, timeout=element_timeout) is not None:
+        return "qr_scanned"
+
+    if find_element_any(driver, AUTH_QR_SELECTORS, timeout=element_timeout) is not None:
+        return "qr"
+
+    if find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=element_timeout) is not None:
+        return "phone"
+
+    if "login" in current:
+        return "login"
+
+    if "authen" in current or "auth" in current:
+        return "authen"
+
+    return "unknown"
+
+
+def is_authorized(driver):
+    return get_auth_page_state(driver, element_timeout=1) == "authorized"
+
+
+def reset_to_qr_page(driver, daily_report_url, qr_timeout=10):
+    try:
+        driver.execute_script("""
+            try { sessionStorage.clear(); } catch(e) {}
+            try { localStorage.clear(); } catch(e) {}
+        """)
+    except Exception:
+        pass
+    driver.get(daily_report_url)
+    return find_element_any(driver, AUTH_QR_SELECTORS, timeout=qr_timeout)
+
+
+def click_login_mode_switch(driver):
+    for _ in range(3):
+        try:
+            el = driver.execute_script("""
+                var boxes = document.querySelectorAll('div.switch-login-mode-box');
+                for (var i = 0; i < boxes.length; i++) {
+                    if (boxes[i].offsetParent !== null) return boxes[i];
+                }
+                return null;
+            """)
+            if el:
+                try:
+                    ActionChains(driver).move_to_element(el).click().perform()
+                except Exception:
+                    driver.execute_script("arguments[0].click();", el)
+                time.sleep(2)
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+    return False
