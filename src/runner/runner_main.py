@@ -214,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command in {"auth", "auth_status"}:
             from src.core.daily_report.auth_common import (
                 clean_profile_locks, clean_profile_cache, clean_profile_session,
-                find_element_any,
+                find_element_any, fast_find_element_any,
                 AUTH_QR_SELECTORS, AUTH_PHONE_SWITCH_SELECTORS, AUTH_QR_SWITCH_SELECTORS,
                 AUTH_PHONE_INPUT_SELECTORS, AUTH_PHONE_NEXT_BUTTON,
                 AUTH_CODE_INPUT_SELECTORS,
@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
                 MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
                 wait_auth_page_ready, get_auth_page_state, is_authorized,
                 reset_to_qr_page, click_element,
-                find_send_code_element, wait_authorized_or_select_account,
+                find_send_code_element, wait_authorized_or_select_account, wait_for_send_code_ready_state,
             )
             from src.core.daily_report.daily_report import DailyReport, DailyReportConfig, DAILY_REPORT_URL
             from selenium.webdriver.support.ui import WebDriverWait
@@ -329,7 +329,9 @@ def main(argv: list[str] | None = None) -> int:
                     state = _page_state(driver)
                     _emit_log(f"interactive_auth: waiting result url={state['url']} title={state['title']}")
 
-                    qr_el = find_element_any(driver, AUTH_QR_SELECTORS, timeout=5)
+                    qr_el = fast_find_element_any(driver, AUTH_QR_SELECTORS)
+                    if qr_el is None:
+                        qr_el = find_element_any(driver, AUTH_QR_SELECTORS, timeout=2)
                     if qr_el:
                         png_data = qr_el.screenshot_as_png
                         send_msg({"type": MSG_QR_READY, "data": base64.b64encode(png_data).decode()})
@@ -415,9 +417,9 @@ def main(argv: list[str] | None = None) -> int:
                             _click_element(driver, agree_btn, "agree")
                             _emit_log("interactive_auth: clicked agree button")
                             time.sleep(2)
-                        code_input = find_element_any(driver, AUTH_CODE_INPUT_SELECTORS, timeout=3)
-                        send_code_btn = find_send_code_element(driver, timeout=5)
-                        if send_code_btn:
+                        send_code_state = wait_for_send_code_ready_state(driver, timeout=6)
+                        send_code_btn = send_code_state.get("element")
+                        if send_code_state.get("state") == "button" and send_code_btn:
                             try:
                                 btn_text = str(send_code_btn.text or "").strip()
                                 btn_disabled = bool(send_code_btn.get_attribute("disabled")) or str(send_code_btn.get_attribute("aria-disabled") or "").lower() == "true"
@@ -429,10 +431,12 @@ def main(argv: list[str] | None = None) -> int:
                                 _click_element(driver, send_code_btn, "send-code")
                                 _emit_log("interactive_auth: clicked send code button")
                                 time.sleep(2)
-                        elif code_input:
-                            _emit_log("interactive_auth: code input already visible, no send code button found")
+                        elif send_code_state.get("state") == "countdown":
+                            _emit_log(f"interactive_auth: send code already triggered, countdown={send_code_state.get('text', '')!r}")
+                        elif send_code_state.get("state") == "code_input":
+                            _emit_log("interactive_auth: code input visible without explicit send code button, proceeding")
                         else:
-                            _emit_log("interactive_auth: neither code input nor send code button found yet")
+                            _emit_log("interactive_auth: neither code input, countdown nor send code button found yet")
                         state = _page_state(driver)
                         _emit_log(f"interactive_auth: waiting for code input, url={state['url']} title={state['title']}")
                     else:

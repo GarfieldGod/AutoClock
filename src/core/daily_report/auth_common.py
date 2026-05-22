@@ -56,8 +56,12 @@ AUTH_CODE_INPUT_SELECTORS = [
 AUTH_SEND_CODE_SELECTORS = [
     (By.CSS_SELECTOR, "button[data-test='send-code'], button[data-test='login-send-code-btn']"),
     (By.XPATH, "//button[contains(text(), '发送验证码') or contains(text(), '获取验证码') or contains(text(), '重新发送') or contains(text(), '发送') or contains(text(), '获取')]"),
-    (By.XPATH, "//*[contains(text(), '获取') or contains(text(), '发送')]"),
-    (By.XPATH, "//*[contains(@class, 'send')]"),
+    (By.XPATH, "//*[@role='button' and (contains(., '发送验证码') or contains(., '获取验证码') or contains(., '重新发送'))]"),
+]
+
+AUTH_SEND_CODE_COUNTDOWN_SELECTORS = [
+    (By.CSS_SELECTOR, "div.base-code-box-count"),
+    (By.XPATH, "//*[contains(text(), '秒后可重新获取验证码') or contains(text(), '秒后可重发') or contains(text(), '重新获取验证码')]"),
 ]
 
 AUTH_SUBMIT_SELECTORS = [
@@ -307,14 +311,18 @@ def click_element(driver, element):
         return False
 
 
-def find_send_code_element(driver, timeout=5):
-    el = find_element_any(driver, AUTH_SEND_CODE_SELECTORS, timeout=timeout)
+def find_send_code_element(driver, timeout=2):
+    el = fast_find_element_any(driver, AUTH_SEND_CODE_SELECTORS)
     if el is not None:
         return el
+    if timeout and timeout > 0:
+        el = find_element_any(driver, AUTH_SEND_CODE_SELECTORS, timeout=timeout)
+        if el is not None:
+            return el
     try:
         return driver.execute_script("""
-            const texts = ['发送验证码', '获取验证码', '重新发送', '发送', '获取'];
-            const nodes = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
+            const texts = ['发送验证码', '获取验证码', '重新发送'];
+            const nodes = Array.from(document.querySelectorAll('button, [role="button"]'));
             for (const el of nodes) {
                 if (!el || !el.textContent) continue;
                 const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
@@ -331,11 +339,60 @@ def find_send_code_element(driver, timeout=5):
         return None
 
 
+def find_send_code_countdown_text(driver):
+    el = fast_find_element_any(driver, AUTH_SEND_CODE_COUNTDOWN_SELECTORS)
+    if el is None:
+        return ""
+    try:
+        return str(el.text or "").strip()
+    except Exception:
+        return ""
+
+
+def wait_for_send_code_ready_state(driver, timeout=6):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        countdown_text = find_send_code_countdown_text(driver)
+        if countdown_text:
+            return {"state": "countdown", "text": countdown_text, "element": None}
+        send_btn = find_send_code_element(driver, timeout=0)
+        if send_btn is not None:
+            return {"state": "button", "text": "", "element": send_btn}
+        code_input = fast_find_element_any(driver, AUTH_CODE_INPUT_SELECTORS)
+        if code_input is not None:
+            return {"state": "code_input", "text": "", "element": code_input}
+        time.sleep(0.2)
+    countdown_text = find_send_code_countdown_text(driver)
+    if countdown_text:
+        return {"state": "countdown", "text": countdown_text, "element": None}
+    send_btn = find_send_code_element(driver, timeout=0)
+    if send_btn is not None:
+        return {"state": "button", "text": "", "element": send_btn}
+    code_input = fast_find_element_any(driver, AUTH_CODE_INPUT_SELECTORS)
+    if code_input is not None:
+        return {"state": "code_input", "text": "", "element": code_input}
+    return {"state": "unknown", "text": "", "element": None}
+
+
 def find_tenant_account_element(driver, tenant_name="东软集团", timeout=3):
+    try:
+        el = driver.execute_script("""
+            const tenantName = arguments[0];
+            const items = Array.from(document.querySelectorAll('.user-list-item[role="button"]'));
+            for (const item of items) {
+                const tenant = item.querySelector('.tenant-name');
+                const text = (tenant?.textContent || '').replace(/\s+/g, ' ').trim();
+                if (text === tenantName) return item;
+            }
+            return null;
+        """, tenant_name)
+        if el is not None:
+            return el
+    except Exception:
+        pass
     selectors = [
-        (By.XPATH, f"//*[contains(@class, 'user-list-item')][.//*[contains(@class, 'tenant-name') and normalize-space()='{tenant_name}'] ]"),
-        (By.XPATH, f"//*[contains(@class, 'user-list-item-wrapper')][.//*[contains(@class, 'tenant-name') and normalize-space()='{tenant_name}'] ]"),
-        (By.XPATH, f"//*[contains(@class, 'tenant-name') and normalize-space()='{tenant_name}']/ancestor::*[@role='button' or contains(@class, 'user-list-item')][1]"),
+        (By.XPATH, f"//div[contains(concat(' ', normalize-space(@class), ' '), ' user-list-item ') and @role='button'][.//*[contains(concat(' ', normalize-space(@class), ' '), ' tenant-name ') and normalize-space()='{tenant_name}']]"),
+        (By.XPATH, f"//*[contains(concat(' ', normalize-space(@class), ' '), ' tenant-name ') and normalize-space()='{tenant_name}']/ancestor::div[@role='button' and contains(concat(' ', normalize-space(@class), ' '), ' user-list-item ')][1]"),
     ]
     return find_element_any(driver, selectors, timeout=timeout)
 

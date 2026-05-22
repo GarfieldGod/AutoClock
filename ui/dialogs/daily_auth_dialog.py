@@ -194,8 +194,7 @@ class DailyAuthDialog(QDialog):
 
     def show_code_input(self):
         self._preferred_page = "phone"
-        if self._send_code_countdown <= 0:
-            self._start_send_code_countdown(60)
+        self._update_send_code_button()
         self.stack.setCurrentIndex(1)
 
     def show_success(self):
@@ -270,6 +269,7 @@ class DailyAuthDialog(QDialog):
         self._send_code_btn.setText("Sending...")
         if self._on_phone_submit_cb:
             self._on_phone_submit_cb(phone)
+        self._start_send_code_countdown(60)
 
     def _on_verify(self):
         code = self._code_input.text().strip()

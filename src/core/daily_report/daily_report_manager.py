@@ -21,7 +21,7 @@ from src.core.daily_report.auth_common import (
     MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
     is_daily_url, wait_auth_page_ready, get_auth_page_state, is_authorized,
     reset_to_qr_page, click_login_mode_switch, click_element,
-    find_send_code_element, wait_authorized_or_select_account,
+    find_send_code_element, wait_authorized_or_select_account, wait_for_send_code_ready_state,
 )
 from selenium.common import TimeoutException, NoSuchElementException
 from selenium.webdriver.common.by import By
@@ -493,9 +493,9 @@ class AuthWorker(QThread):
             else:
                 Log.info("AuthWorker: no agreement modal, proceeding")
 
-            code_input = find_element_any(driver, AUTH_CODE_INPUT_SELECTORS, timeout=3)
-            send_code_btn = find_send_code_element(driver, timeout=5)
-            if send_code_btn:
+            send_code_state = wait_for_send_code_ready_state(driver, timeout=6)
+            send_code_btn = send_code_state.get("element")
+            if send_code_state.get("state") == "button" and send_code_btn:
                 try:
                     btn_text = str(send_code_btn.text or "").strip()
                     btn_disabled = bool(send_code_btn.get_attribute("disabled")) or str(send_code_btn.get_attribute("aria-disabled") or "").lower() == "true"
@@ -507,10 +507,12 @@ class AuthWorker(QThread):
                     click_element(driver, send_code_btn)
                     Log.info("AuthWorker: clicked send code button")
                     time.sleep(2)
-            elif code_input:
-                Log.info("AuthWorker: code input already visible, no send code button found")
+            elif send_code_state.get("state") == "countdown":
+                Log.info(f"AuthWorker: send code already triggered, countdown={send_code_state.get('text', '')!r}")
+            elif send_code_state.get("state") == "code_input":
+                Log.info("AuthWorker: code input visible without explicit send code button, proceeding")
             else:
-                Log.info("AuthWorker: neither code input nor send code button found yet")
+                Log.info("AuthWorker: neither code input, countdown nor send code button found yet")
 
         # Wait for verification code
         self.need_code.emit()
