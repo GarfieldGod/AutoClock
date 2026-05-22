@@ -1,7 +1,9 @@
 import argparse
+import select
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -213,14 +215,14 @@ def main(argv: list[str] | None = None) -> int:
             from src.core.daily_report.auth_common import (
                 clean_profile_locks, clean_profile_cache, clean_profile_session,
                 find_element_any,
-                AUTH_QR_SELECTORS, AUTH_PHONE_SWITCH_SELECTORS, AUTH_QR_SWITCH_SELECTORS,
+                AUTH_QR_SELECTORS, AUTH_QR_SUCCESS_SELECTORS, AUTH_PHONE_SWITCH_SELECTORS, AUTH_QR_SWITCH_SELECTORS,
                 AUTH_PHONE_INPUT_SELECTORS, AUTH_PHONE_NEXT_BUTTON,
                 AUTH_CODE_INPUT_SELECTORS,
-                AUTH_SEND_CODE_SELECTORS, AUTH_SUBMIT_SELECTORS, AUTH_AGREE_BUTTON,
+                AUTH_SEND_CODE_SELECTORS, AUTH_SUBMIT_SELECTORS, AUTH_AGREE_BUTTON, AUTH_AUTHORIZED_SELECTORS,
                 send_msg, recv_msg,
                 MSG_QR_READY, MSG_NEED_PHONE, MSG_NEED_CODE,
                 MSG_AUTH_SUCCESS, MSG_AUTH_ERROR,
-                MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
+                MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
             )
             from src.core.daily_report.daily_report import DailyReport, DailyReportConfig, DAILY_REPORT_URL
             from selenium.webdriver.support.ui import WebDriverWait
@@ -247,21 +249,51 @@ def main(argv: list[str] | None = None) -> int:
                     pass
 
                 current = (driver.current_url or "").lower()
-                if "login" in current or "authen" in current or "auth" in current:
+                if "login" in current:
                     return False
+                if "accounts.feishu.cn/open-apis/authen/v1/index" in current:
+                    return True
                 if "daily" in current:
+                    auth_el = find_element_any(driver, AUTH_AUTHORIZED_SELECTORS, timeout=1)
+                    if auth_el is not None:
+                        return True
+                return False
+
+            def _emit_log(message):
+                Log.info(message)
+                if interactive:
                     try:
-                        task_el = driver.find_element(By.ID, "task")
-                        if task_el.is_displayed():
-                            return True
+                        send_msg({"type": MSG_LOG, "data": message})
                     except Exception:
                         pass
-                    try:
-                        project_el = driver.find_element(By.ID, "proList")
-                        if project_el.is_displayed():
-                            return True
-                    except Exception:
-                        pass
+
+            def _recv_msg_non_blocking(timeout_sec=1.0):
+                try:
+                    ready, _, _ = select.select([sys.stdin], [], [], timeout_sec)
+                except Exception:
+                    time.sleep(timeout_sec)
+                    return None
+                if not ready:
+                    return None
+                return recv_msg()
+
+            def _click_element(driver, element, label):
+                try:
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+                except Exception:
+                    pass
+                try:
+                    element.click()
+                    Log.info(f"interactive_auth: clicked {label} via native click")
+                    return True
+                except Exception as native_error:
+                    Log.warn(f"interactive_auth: native click failed for {label}: {native_error}")
+                try:
+                    driver.execute_script("arguments[0].click();", element)
+                    Log.info(f"interactive_auth: clicked {label} via js click")
+                    return True
+                except Exception as js_error:
+                    Log.warn(f"interactive_auth: js click failed for {label}: {js_error}")
                 return False
 
             def _page_state(driver):
@@ -272,6 +304,24 @@ def main(argv: list[str] | None = None) -> int:
                     }
                 except Exception:
                     return {"url": "", "title": ""}
+
+            def _go_back_to_qr(driver):
+                _emit_log("interactive_auth: clearing storage and reloading for qr login")
+                try:
+                    driver.execute_script("""
+                        try { sessionStorage.clear(); } catch(e) {}
+                        try { localStorage.clear(); } catch(e) {}
+                    """)
+                except Exception:
+                    pass
+                driver.get(DAILY_REPORT_URL)
+                qr_element = find_element_any(driver, AUTH_QR_SELECTORS, timeout=15)
+                if qr_element is not None:
+                    _emit_log("interactive_auth: qr visible again after reset")
+                    return True
+                state = _page_state(driver)
+                _emit_log(f"interactive_auth: qr not found after reset, url={state['url']} title={state['title']}")
+                return False
 
             def _interactive_auth(driver):
                 import base64
@@ -294,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
                         pass
 
                     state = _page_state(driver)
-                    Log.info(f"interactive_auth: initial state url={state['url']} title={state['title']}")
+                    _emit_log(f"interactive_auth: initial state url={state['url']} title={state['title']}")
 
                     if _check_authorized(driver, navigate=False):
                         send_msg({"type": MSG_AUTH_SUCCESS})
@@ -307,16 +357,16 @@ def main(argv: list[str] | None = None) -> int:
                         auth_btn.click()
                         time.sleep(2)
                         state = _page_state(driver)
-                        Log.info(f"interactive_auth: clicked authorize button, url={state['url']} title={state['title']}")
+                        _emit_log(f"interactive_auth: clicked authorize button, url={state['url']} title={state['title']}")
                     except Exception:
                         pass
 
                     try:
-                        WebDriverWait(driver, 15).until(
+                        WebDriverWait(driver, 35).until(
                             lambda d: (
                                 find_element_any(d, AUTH_QR_SELECTORS, timeout=1) is not None
                                 or find_element_any(d, AUTH_PHONE_INPUT_SELECTORS, timeout=1) is not None
-                                or "daily" in (d.current_url or "").lower()
+                                or _check_authorized(d, navigate=False)
                                 or "login" in (d.current_url or "").lower()
                             )
                         )
@@ -324,40 +374,45 @@ def main(argv: list[str] | None = None) -> int:
                         pass
 
                     state = _page_state(driver)
-                    Log.info(f"interactive_auth: waiting result url={state['url']} title={state['title']}")
+                    _emit_log(f"interactive_auth: waiting result url={state['url']} title={state['title']}")
 
                     qr_el = find_element_any(driver, AUTH_QR_SELECTORS, timeout=5)
                     if qr_el:
                         png_data = qr_el.screenshot_as_png
                         send_msg({"type": MSG_QR_READY, "data": base64.b64encode(png_data).decode()})
+                        _emit_log("interactive_auth: qr_ready sent to UI, entering scan wait loop")
                         while True:
                             try:
+                                if find_element_any(driver, AUTH_QR_SUCCESS_SELECTORS, timeout=1) is not None:
+                                    _emit_log("interactive_auth: qr page shows scan success")
                                 if _check_authorized(driver, navigate=False):
                                     state = _page_state(driver)
-                                    Log.info(f"interactive_auth: confirmed authorized after QR scan, url={state['url']}")
+                                    _emit_log(f"interactive_auth: confirmed authorized after QR scan, url={state['url']}")
                                     send_msg({"type": MSG_AUTH_SUCCESS})
                                     return True
                             except Exception:
                                 pass
-                            msg = recv_msg()
+                            msg = _recv_msg_non_blocking(1.0)
                             if msg is None:
-                                return False
+                                continue
                             t = msg.get("type", "")
                             if t == MSG_SWITCH_PHONE:
+                                _emit_log("interactive_auth: received switch_phone while waiting for QR scan")
                                 break
                             if t == MSG_CANCEL:
+                                _emit_log("interactive_auth: received cancel while waiting for QR scan")
                                 return False
-                            time.sleep(1)
+                            _emit_log(f"interactive_auth: ignored message while waiting for QR scan: {t}")
 
                     if _check_authorized(driver, navigate=False):
                         state = _page_state(driver)
-                        Log.info(f"interactive_auth: authorized without QR prompt, url={state['url']}")
+                        _emit_log(f"interactive_auth: authorized without QR prompt, url={state['url']}")
                         send_msg({"type": MSG_AUTH_SUCCESS})
                         return True
 
                     if "login" in (driver.current_url or "").lower():
                         state = _page_state(driver)
-                        Log.info(f"interactive_auth: falling back to phone login, url={state['url']} title={state['title']}")
+                        _emit_log(f"interactive_auth: falling back to phone login, url={state['url']} title={state['title']}")
                         return _phone_login(driver)
                     state = _page_state(driver)
                     send_msg({"type": MSG_AUTH_ERROR, "data": f"未检测到二维码，当前页面 url={state['url']} title={state['title']}"})
@@ -367,75 +422,78 @@ def main(argv: list[str] | None = None) -> int:
                     return False
 
             def _phone_login(driver):
+                state = _page_state(driver)
+                _emit_log(f"interactive_auth: entering phone login, url={state['url']} title={state['title']}")
                 switch_el = find_element_any(driver, AUTH_PHONE_SWITCH_SELECTORS)
                 if switch_el:
                     try:
-                        switch_el.click()
+                        _click_element(driver, switch_el, "phone-switch")
                         time.sleep(2)
                     except Exception:
                         pass
+
+                phone_input = find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=8)
+                if phone_input is None:
+                    state = _page_state(driver)
+                    _emit_log(f"interactive_auth: phone input not found after switch, url={state['url']} title={state['title']}")
 
                 send_msg({"type": MSG_NEED_PHONE})
                 msg = recv_msg()
                 if msg is None or msg.get("type") == MSG_CANCEL:
                     return False
                 if msg.get("type") == MSG_SWITCH_QR:
-                    qr_switch = find_element_any(driver, AUTH_QR_SWITCH_SELECTORS)
-                    if qr_switch:
-                        try:
-                            qr_switch.click()
-                            time.sleep(2)
-                        except Exception:
-                            pass
+                    _go_back_to_qr(driver)
                     return _interactive_auth(driver)
                 phone = (msg.get("data") or "").strip() if msg.get("type") == MSG_PHONE else ""
                 if phone:
-                    phone_input = find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=5)
+                    phone_input = find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=8)
                     if phone_input:
                         phone_input.clear()
                         phone_input.send_keys(phone)
+                        _emit_log(f"interactive_auth: phone number filled, len={len(phone)}")
                         time.sleep(1)
-                        send_btn = find_element_any(driver, AUTH_PHONE_NEXT_BUTTON, timeout=5)
-                        if send_btn:
-                            send_btn.click()
+                        next_btn = find_element_any(driver, AUTH_PHONE_NEXT_BUTTON, timeout=5)
+                        if next_btn:
+                            _click_element(driver, next_btn, "phone-next")
+                            _emit_log("interactive_auth: clicked next button")
                             time.sleep(1)
                         agree_btn = find_element_any(driver, AUTH_AGREE_BUTTON, timeout=3)
                         if agree_btn:
-                            agree_btn.click()
+                            _click_element(driver, agree_btn, "agree")
+                            _emit_log("interactive_auth: clicked agree button")
                             time.sleep(2)
+                        state = _page_state(driver)
+                        _emit_log(f"interactive_auth: waiting for code input, url={state['url']} title={state['title']}")
+                    else:
+                        _emit_log("interactive_auth: phone input missing when trying to fill phone")
 
                 send_msg({"type": MSG_NEED_CODE})
                 msg = recv_msg()
                 if msg is None or msg.get("type") == MSG_CANCEL:
                     return False
                 if msg.get("type") == MSG_SWITCH_QR:
-                    qr_switch = find_element_any(driver, AUTH_QR_SWITCH_SELECTORS)
-                    if qr_switch:
-                        try:
-                            qr_switch.click()
-                            time.sleep(2)
-                        except Exception:
-                            pass
+                    _go_back_to_qr(driver)
                     return _interactive_auth(driver)
                 code = (msg.get("data") or "").strip() if msg.get("type") == MSG_CODE else ""
                 if code:
                     code_input = find_element_any(driver, AUTH_CODE_INPUT_SELECTORS, timeout=5)
                     if code_input:
                         code_input.send_keys(code)
+                        _emit_log(f"interactive_auth: code entered, len={len(code)}")
                         time.sleep(5)
                     else:
                         submit_btn = find_element_any(driver, AUTH_SUBMIT_SELECTORS, timeout=3)
                         if submit_btn:
-                            submit_btn.click()
+                            _click_element(driver, submit_btn, "submit-login")
                             time.sleep(5)
 
                 ok = _check_authorized(driver, navigate=False)
                 if ok:
                     state = _page_state(driver)
-                    Log.info(f"interactive_auth: phone login authorized, url={state['url']} title={state['title']}")
+                    _emit_log(f"interactive_auth: phone login authorized, url={state['url']} title={state['title']}")
                 else:
                     state = _page_state(driver)
-                    Log.warn(f"interactive_auth: phone login not authorized, url={state['url']} title={state['title']}")
+                    _emit_log(f"interactive_auth: phone login not authorized, url={state['url']} title={state['title']}")
                 return ok
 
             profile_dir = os.path.join(AppPath.DataRoot, "daily_report_profile")

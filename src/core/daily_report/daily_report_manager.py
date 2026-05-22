@@ -18,7 +18,7 @@ from src.core.daily_report.auth_common import (
     AUTH_SEND_CODE_SELECTORS, AUTH_SUBMIT_SELECTORS, AUTH_AGREE_BUTTON,
     MSG_QR_READY, MSG_NEED_PHONE, MSG_NEED_CODE,
     MSG_AUTH_SUCCESS, MSG_AUTH_ERROR,
-    MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
+    MSG_LOG, MSG_PHONE, MSG_CODE, MSG_SWITCH_PHONE, MSG_SWITCH_QR, MSG_CANCEL,
 )
 from selenium.common import TimeoutException, NoSuchElementException
 from selenium.webdriver.common.by import By
@@ -738,6 +738,7 @@ class RemoteAuthWorker(QThread):
                         msg = _json.loads(line)
                     except _json.JSONDecodeError:
                         raw_non_json_lines.append(line)
+                        Log.info(f"RemoteAuthWorker[raw]: {line}")
                         continue
 
                     msg_type = msg.get("type", "")
@@ -746,6 +747,9 @@ class RemoteAuthWorker(QThread):
                         import base64
                         raw = base64.b64decode(msg.get("data", ""))
                         self.qr_ready.emit(raw)
+
+                    elif msg_type == MSG_LOG:
+                        Log.info(f"RemoteAuthWorker[remote]: {msg.get('data', '')}")
 
                     elif msg_type == MSG_NEED_PHONE:
                         self.need_phone.emit()

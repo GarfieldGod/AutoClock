@@ -23,6 +23,10 @@ AUTH_QR_SELECTORS = [
     (By.XPATH, "//img[contains(@src, 'qr')]"),
 ]
 
+AUTH_QR_SUCCESS_SELECTORS = [
+    (By.XPATH, "//*[contains(text(), '扫码成功') or contains(text(), '扫描成功')]"),
+]
+
 AUTH_PHONE_SWITCH_SELECTORS = [
     (By.CSS_SELECTOR, "div.switch-login-mode-box"),
     (By.XPATH, "//*[contains(@class, 'switch-login-mode-box')]"),
@@ -37,6 +41,7 @@ AUTH_PHONE_INPUT_SELECTORS = [
 AUTH_PHONE_NEXT_BUTTON = [
     (By.CSS_SELECTOR, "[data-test='login-phone-next-btn']"),
     (By.XPATH, "//button[contains(text(), '下一步')]"),
+    (By.XPATH, "//button[contains(text(), '继续')]"),
 ]
 
 AUTH_CODE_INPUT_SELECTORS = [
@@ -47,6 +52,8 @@ AUTH_CODE_INPUT_SELECTORS = [
 ]
 
 AUTH_SEND_CODE_SELECTORS = [
+    (By.CSS_SELECTOR, "button[data-test='send-code'], button[data-test='login-send-code-btn']"),
+    (By.XPATH, "//button[contains(text(), '发送验证码') or contains(text(), '获取验证码') or contains(text(), '重新发送') or contains(text(), '发送') or contains(text(), '获取')]"),
     (By.XPATH, "//*[contains(text(), '获取') or contains(text(), '发送')]"),
     (By.XPATH, "//*[contains(@class, 'send')]"),
 ]
@@ -64,6 +71,15 @@ AUTH_QR_SWITCH_SELECTORS = [
 AUTH_AGREE_BUTTON = [
     (By.CSS_SELECTOR, "button.pp-modal-btn-confirm"),
     (By.XPATH, "//button[contains(text(), '同意')]"),
+    (By.XPATH, "//button[contains(text(), '确认')]"),
+]
+
+AUTH_AUTHORIZED_SELECTORS = [
+    (By.ID, "task"),
+    (By.ID, "proList"),
+    (By.XPATH, "//*[contains(text(), '新增')]"),
+    (By.XPATH, "//*[contains(text(), '保存')]"),
+    (By.ID, "date"),
 ]
 
 MSG_QR_READY = "qr_ready"
@@ -71,6 +87,7 @@ MSG_NEED_PHONE = "need_phone"
 MSG_NEED_CODE = "need_code"
 MSG_AUTH_SUCCESS = "auth_success"
 MSG_AUTH_ERROR = "auth_error"
+MSG_LOG = "log"
 MSG_PHONE = "phone"
 MSG_CODE = "code"
 MSG_SWITCH_PHONE = "switch_phone"
