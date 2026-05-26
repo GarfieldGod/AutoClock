@@ -490,48 +490,58 @@ def main(argv: list[str] | None = None) -> int:
                                 btn_disabled = False
                             _emit_log(f"interactive_auth: send code button found, text={btn_text!r}, disabled={btn_disabled}")
                             if not btn_disabled:
-                                _click_element(driver, send_code_btn, "send-code")
-                                _emit_log("interactive_auth: clicked send code button")
-                                if interactive:
-                                    send_msg({"type": MSG_SEND_CODE_TRIGGERED})
-                                time.sleep(2)
+                                clicked_btn = _click_element(driver, send_code_btn, "send-code")
+                                if clicked_btn:
+                                    _emit_log("interactive_auth: clicked send code button")
+                                    confirmed = False
+                                    retry_state = wait_for_send_code_ready_state(driver, timeout=4)
+                                    if retry_state.get("state") == "countdown":
+                                        _emit_log(f"interactive_auth: send code confirmed by countdown={retry_state.get('text', '')!r}")
+                                        confirmed = True
+                                    else:
+                                        try:
+                                            driver.execute_script("""
+                                                const el = arguments[0];
+                                                if (!el) return false;
+                                                const events = ['mouseover', 'mousedown', 'mouseup', 'click'];
+                                                for (const type of events) {
+                                                    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+                                                }
+                                                return true;
+                                            """, send_code_btn)
+                                            _emit_log("interactive_auth: send code not confirmed, retried with DOM mouse events")
+                                        except Exception:
+                                            pass
+                                        retry_state = wait_for_send_code_ready_state(driver, timeout=4)
+                                        if retry_state.get("state") == "countdown":
+                                            _emit_log(f"interactive_auth: send code confirmed after retry, countdown={retry_state.get('text', '')!r}")
+                                            confirmed = True
+                                    if confirmed and interactive:
+                                        send_msg({"type": MSG_SEND_CODE_TRIGGERED})
+                                    if not confirmed:
+                                        _emit_log("interactive_auth: send code click not confirmed by countdown; SMS may not be sent")
+                                else:
+                                    _emit_log("interactive_auth: send code button click failed")
                         elif send_code_state.get("state") == "countdown":
                             _emit_log(f"interactive_auth: send code already triggered, countdown={send_code_state.get('text', '')!r}")
                             if interactive:
                                 send_msg({"type": MSG_SEND_CODE_TRIGGERED})
                         elif send_code_state.get("state") == "code_input":
                             _emit_log("interactive_auth: code input visible without explicit send code button, proceeding")
-                            try:
-                                send_code_btn2 = find_send_code_element(driver, timeout=2)
-                            except Exception:
-                                send_code_btn2 = None
-                            clicked = False
-                            if send_code_btn2 is not None:
-                                clicked = _click_element(driver, send_code_btn2, "send-code-fallback")
-                            if not clicked:
-                                try:
-                                    clicked = bool(driver.execute_script("""
-                                        const texts = ['发送验证码', '获取验证码', '重新发送'];
-                                        const nodes = Array.from(document.querySelectorAll('button, [role="button"], span, a, div'));
-                                        for (const el of nodes) {
-                                            const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
-                                            if (!txt) continue;
-                                            if (!texts.some(t => txt.includes(t))) continue;
-                                            const rect = el.getBoundingClientRect();
-                                            if (rect.width <= 0 || rect.height <= 0) continue;
-                                            const style = window.getComputedStyle(el);
-                                            if (style.display === 'none' || style.visibility === 'hidden') continue;
-                                            el.click();
-                                            return true;
-                                        }
-                                        return false;
-                                    """))
-                                except Exception:
-                                    clicked = False
-                            if clicked:
-                                _emit_log("interactive_auth: send code clicked via fallback when code_input is visible")
+                            # Feishu phone flow can auto-send SMS once code input is shown.
+                            # Keep consistent with local flow: no forced click when explicit send button is absent.
                             if interactive:
                                 send_msg({"type": MSG_SEND_CODE_TRIGGERED})
+                            try:
+                                retry_state = wait_for_send_code_ready_state(driver, timeout=8)
+                                if retry_state.get("state") == "countdown":
+                                    _emit_log(f"interactive_auth: auto send confirmed by countdown={retry_state.get('text', '')!r}")
+                                elif retry_state.get("state") == "button":
+                                    _emit_log("interactive_auth: send code button appeared later after code_input")
+                                else:
+                                    _emit_log("interactive_auth: no countdown/button after code_input; continue waiting for user code")
+                            except Exception:
+                                pass
                         else:
                             _emit_log("interactive_auth: neither code input, countdown nor send code button found yet")
                         state = _page_state(driver)

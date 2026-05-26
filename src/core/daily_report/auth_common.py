@@ -5,6 +5,7 @@ import time
 import json
 import base64
 import shutil
+import re
 from urllib.parse import urlparse
 
 from selenium.webdriver.common.by import By
@@ -61,7 +62,7 @@ AUTH_SEND_CODE_SELECTORS = [
 
 AUTH_SEND_CODE_COUNTDOWN_SELECTORS = [
     (By.CSS_SELECTOR, "div.base-code-box-count"),
-    (By.XPATH, "//*[contains(text(), '秒后可重新获取验证码') or contains(text(), '秒后可重发') or contains(text(), '重新获取验证码')]"),
+    (By.XPATH, "//*[contains(text(), '秒后可重新获取验证码') or contains(text(), '秒后可重发') or contains(text(), '秒后')]"),
 ]
 
 AUTH_SUBMIT_SELECTORS = [
@@ -353,7 +354,14 @@ def find_send_code_countdown_text(driver):
     if el is None:
         return ""
     try:
-        return str(el.text or "").strip()
+        text = str(el.text or "").strip()
+        if not text:
+            return ""
+        if re.search(r"\d+\s*秒", text):
+            return text
+        if "秒后" in text:
+            return text
+        return ""
     except Exception:
         return ""
 

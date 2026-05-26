@@ -287,13 +287,19 @@ class AuthWorker(QThread):
 
             opts = Options()
             opts.page_load_strategy = 'eager'
-            if not self._show_web_page:
+            hidden_window_mode = (not self._show_web_page and os.name == "nt")
+            if not self._show_web_page and not hidden_window_mode:
                 opts.add_argument("--headless=new")
             opts.add_argument("--no-sandbox")
             opts.add_argument("--disable-dev-shm-usage")
             opts.add_argument("--disable-gpu")
             opts.add_argument("--window-size=1920,1080")
-            opts.add_argument("--start-maximized")
+            if hidden_window_mode:
+                opts.add_argument("--start-minimized")
+                opts.add_argument("--window-position=-32000,-32000")
+                Log.info("AuthWorker: show_web_page=false on Windows, using hidden window mode (non-headless)")
+            else:
+                opts.add_argument("--start-maximized")
             opts.add_argument("--enable-logging")
             opts.add_argument("--v=1")
             opts.add_argument("--disable-blink-features=AutomationControlled")
@@ -509,10 +515,38 @@ class AuthWorker(QThread):
                     btn_disabled = False
                 Log.info(f"AuthWorker: send code button found, text={btn_text!r}, disabled={btn_disabled}")
                 if not btn_disabled:
-                    click_element(driver, send_code_btn)
-                    Log.info("AuthWorker: clicked send code button")
-                    self.send_code_triggered.emit()
-                    time.sleep(2)
+                    clicked = click_element(driver, send_code_btn)
+                    if clicked:
+                        Log.info("AuthWorker: clicked send code button")
+                        confirmed = False
+                        retry_state = wait_for_send_code_ready_state(driver, timeout=4)
+                        if retry_state.get("state") == "countdown":
+                            Log.info(f"AuthWorker: send code confirmed by countdown={retry_state.get('text', '')!r}")
+                            confirmed = True
+                        else:
+                            try:
+                                driver.execute_script("""
+                                    const el = arguments[0];
+                                    if (!el) return false;
+                                    const events = ['mouseover', 'mousedown', 'mouseup', 'click'];
+                                    for (const type of events) {
+                                        el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+                                    }
+                                    return true;
+                                """, send_code_btn)
+                                Log.info("AuthWorker: send code not confirmed, retried with DOM mouse events")
+                            except Exception:
+                                pass
+                            retry_state = wait_for_send_code_ready_state(driver, timeout=4)
+                            if retry_state.get("state") == "countdown":
+                                Log.info(f"AuthWorker: send code confirmed after retry, countdown={retry_state.get('text', '')!r}")
+                                confirmed = True
+                        if confirmed:
+                            self.send_code_triggered.emit()
+                        else:
+                            Log.warn("AuthWorker: send code click not confirmed by countdown; SMS may not be sent")
+                    else:
+                        Log.warn("AuthWorker: send code button click failed")
                 else:
                     Log.warn("AuthWorker: send code button is disabled")
             elif send_code_state.get("state") == "countdown":
@@ -520,6 +554,17 @@ class AuthWorker(QThread):
                 self.send_code_triggered.emit()
             elif send_code_state.get("state") == "code_input":
                 Log.info("AuthWorker: code input visible without explicit send code button, proceeding")
+                self.send_code_triggered.emit()
+                try:
+                    retry_state = wait_for_send_code_ready_state(driver, timeout=8)
+                    if retry_state.get("state") == "countdown":
+                        Log.info(f"AuthWorker: auto send confirmed by countdown={retry_state.get('text', '')!r}")
+                    elif retry_state.get("state") == "button":
+                        Log.info("AuthWorker: send code button appeared later after code_input")
+                    else:
+                        Log.info("AuthWorker: no countdown/button after code_input; continue waiting for code")
+                except Exception:
+                    pass
             else:
                 Log.info("AuthWorker: neither code input, countdown nor send code button found yet")
 
