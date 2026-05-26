@@ -92,9 +92,20 @@ class DailyReport:
         opts = Options()
         opts.page_load_strategy = 'eager'
         effective_show_web_page = self._can_show_web_page()
+        has_display = True
+        if platform.system() == "Linux":
+            display = str(os.environ.get("DISPLAY", "")).strip()
+            wayland = str(os.environ.get("WAYLAND_DISPLAY", "")).strip()
+            has_display = bool(display or wayland)
+
         if self.config.show_web_page and not effective_show_web_page:
             Log.warn("DailyReport: show_web_page requested but no DISPLAY/WAYLAND_DISPLAY found, fallback to headless")
-        if not effective_show_web_page:
+
+        hidden_window_mode = (not self.config.show_web_page and has_display)
+        if not self.config.show_web_page and hidden_window_mode:
+            Log.info("DailyReport: show_web_page=false but display exists, use hidden window mode (non-headless)")
+
+        if not effective_show_web_page and not hidden_window_mode:
             opts.add_argument("--headless=new")
 
         if platform.system() == "Linux":
@@ -115,6 +126,9 @@ class DailyReport:
         opts.add_argument("--no-default-browser-check")
         if effective_show_web_page:
             opts.add_argument("--start-maximized")
+        elif hidden_window_mode:
+            opts.add_argument("--start-minimized")
+            opts.add_argument("--window-position=-32000,-32000")
 
         opts.add_argument(f"--user-data-dir={profile_dir}")
 

@@ -658,7 +658,7 @@ class RemoteAuthWorker(QThread):
         super().__init__()
         self.ssh_cfg = ssh_cfg
         self.driver_path = driver_path
-        self._show_web_page = bool(show_web_page)
+        self._show_web_page = True
         self._phone = None
         self._code = None
         self._use_phone = False
@@ -703,12 +703,19 @@ class RemoteAuthWorker(QThread):
     def run(self):
         import json as _json
         import socket
+        import shlex
 
         try:
             runner_path = f"{AppPath.RemoteAppRoot}/servers/current/auto-clock-runner"
-            cmd = f"{runner_path} auth --driver_path={self.driver_path} --interactive"
-            if self._show_web_page:
-                cmd += " --show_web_page"
+            runner_q = shlex.quote(runner_path)
+            driver_q = shlex.quote(self.driver_path)
+            base_cmd = f"{runner_q} auth --driver_path={driver_q} --interactive --show_web_page"
+            cmd = (
+                "sh -lc "
+                f"\"DISPLAY=${{DISPLAY:-:0}} "
+                f"XAUTHORITY=${{XAUTHORITY:-$HOME/.Xauthority}} "
+                f"{base_cmd}\""
+            )
 
             Log.info(f"RemoteAuthWorker: executing: {cmd}")
 
@@ -815,6 +822,11 @@ class RemoteAuthWorker(QThread):
                     exit_code = chan.recv_exit_status()
             except Exception:
                 pass
+
+            if exit_code == 0:
+                Log.info("RemoteAuthWorker: remote auth process exited with code=0, treat as success")
+                self.auth_success.emit()
+                return
 
             err_lines = []
             try:

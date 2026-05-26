@@ -277,7 +277,16 @@ def reset_to_qr_page(driver, daily_report_url, qr_timeout=10):
         """)
     except Exception:
         pass
-    driver.get(daily_report_url)
+    try:
+        driver.set_page_load_timeout(20)
+        driver.get(daily_report_url)
+    except TimeoutException:
+        try:
+            driver.execute_script("window.stop();")
+        except Exception:
+            pass
+    except Exception:
+        pass
     return find_element_any(driver, AUTH_QR_SELECTORS, timeout=qr_timeout)
 
 

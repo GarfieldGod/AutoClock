@@ -197,7 +197,19 @@ class DailyReportPage(AutoClockPageContent):
             is_remote = hasattr(w, "is_remote_connected") and w.is_remote_connected()
         except Exception:
             is_remote = False
-        driver_path = str(self.get_data_func(Key.DriverPath, "") if self.get_data_func else "").strip()
+
+        driver_path = ""
+        if is_remote:
+            try:
+                data_store = getattr(w, "data_store", None)
+                if data_store and hasattr(data_store, "read_config"):
+                    cfg = data_store.read_config()
+                    if isinstance(cfg, dict):
+                        driver_path = str(cfg.get(Key.DriverPath, "") or "").strip()
+            except Exception:
+                driver_path = ""
+        if not driver_path:
+            driver_path = str(self.get_data_func(Key.DriverPath, "") if self.get_data_func else "").strip()
         return bool(is_remote), driver_path
 
     def _show_auth_checking(self):
@@ -275,9 +287,23 @@ class DailyReportPage(AutoClockPageContent):
 
         w = self.window()
         is_remote = hasattr(w, "is_remote_connected") and w.is_remote_connected()
-        show_web_page = str(os.environ.get("AUTO_CLOCK_DEBUG_AUTH_SHOW_WEB", "")).strip().lower() in {
-            "1", "true", "yes", "on"
-        }
+        remote_cfg = None
+        if is_remote:
+            try:
+                data_store = getattr(w, "data_store", None)
+                if data_store and hasattr(data_store, "read_config"):
+                    cfg = data_store.read_config()
+                    if isinstance(cfg, dict):
+                        remote_cfg = cfg
+            except Exception:
+                remote_cfg = None
+
+        if remote_cfg is not None:
+            show_web_page = bool(remote_cfg.get(Key.ShowWebPage, False))
+        else:
+            show_web_page = bool(self.get_data_func(Key.ShowWebPage, False)) if self.get_data_func else False
+        if is_remote:
+            show_web_page = True
 
         if is_remote:
             ssh_cfg = getattr(w, '_remote_ssh_cfg', None)
@@ -289,11 +315,14 @@ class DailyReportPage(AutoClockPageContent):
                 if not ok:
                     MessageBox(str(result or "Failed to ensure remote Edge Driver."))
                     return
-            driver_path = str(self.get_data_func(Key.DriverPath, "") if self.get_data_func else "").strip()
+            if remote_cfg is not None:
+                driver_path = str(remote_cfg.get(Key.DriverPath, "") or "").strip()
+            else:
+                driver_path = str(self.get_data_func(Key.DriverPath, "") if self.get_data_func else "").strip()
             if not driver_path:
                 MessageBox("Remote driver path not configured in remote data.json.")
                 return
-            worker = RemoteAuthWorker(ssh_cfg, driver_path, show_web_page=show_web_page)
+            worker = RemoteAuthWorker(ssh_cfg, driver_path, show_web_page=True)
         else:
             driver_path = str(self.get_data_func(Key.DriverPath, "") if self.get_data_func else "").strip()
             if not driver_path or not os.path.exists(driver_path):

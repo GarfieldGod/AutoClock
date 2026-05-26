@@ -226,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
                 MSG_SEND_CODE_TRIGGERED,
                 wait_auth_page_ready, get_auth_page_state, is_authorized,
                 reset_to_qr_page, click_element,
+                click_login_mode_switch,
                 find_send_code_element, wait_authorized_or_select_account, wait_for_send_code_ready_state,
             )
             from src.core.daily_report.daily_report import DailyReport, DailyReportConfig, DAILY_REPORT_URL
@@ -279,6 +280,16 @@ def main(argv: list[str] | None = None) -> int:
                 except Exception:
                     return {"url": "", "title": ""}
 
+            def _is_success_landing_url(url):
+                u = str(url or "").lower()
+                if not u:
+                    return False
+                if "/open-apis/authen/v1/index" in u:
+                    return True
+                if "fsyy1.neusoft.com/daily" in u and "m=dailylist" in u:
+                    return True
+                return False
+
             def _go_back_to_qr(driver):
                 _emit_log("interactive_auth: clearing storage and reloading for qr login")
                 qr_element = reset_to_qr_page(driver, DAILY_REPORT_URL, qr_timeout=15)
@@ -314,6 +325,11 @@ def main(argv: list[str] | None = None) -> int:
 
                     state = _page_state(driver)
                     _emit_log(f"interactive_auth: initial state url={state['url']} title={state['title']}")
+
+                    if _is_success_landing_url(state["url"]):
+                        _emit_log(f"interactive_auth: success landing url detected at startup, url={state['url']}")
+                        send_msg({"type": MSG_AUTH_SUCCESS})
+                        return True
 
                     if _check_authorized(driver, navigate=False):
                         _emit_log("interactive_auth: already authorized, reset to QR for re-authorization")
@@ -402,7 +418,10 @@ def main(argv: list[str] | None = None) -> int:
                     if switched_to_phone:
                         state = _page_state(driver)
                         _emit_log(f"interactive_auth: switch_phone confirmed, entering phone login directly, url={state['url']} title={state['title']}")
-                        return _phone_login(driver)
+                        ok = _phone_login(driver)
+                        if ok:
+                            send_msg({"type": MSG_AUTH_SUCCESS})
+                        return ok
 
                     if _check_authorized(driver, navigate=False):
                         state = _page_state(driver)
@@ -415,13 +434,19 @@ def main(argv: list[str] | None = None) -> int:
                     if phone_input is not None:
                         state = _page_state(driver)
                         _emit_log(f"interactive_auth: phone input found, falling back to phone login, url={state['url']} title={state['title']}")
-                        return _phone_login(driver)
+                        ok = _phone_login(driver)
+                        if ok:
+                            send_msg({"type": MSG_AUTH_SUCCESS})
+                        return ok
 
                     # Fallback: URL-based detection for login pages
                     if "login" in (driver.current_url or "").lower():
                         state = _page_state(driver)
                         _emit_log(f"interactive_auth: login url detected, falling back to phone login, url={state['url']} title={state['title']}")
-                        return _phone_login(driver)
+                        ok = _phone_login(driver)
+                        if ok:
+                            send_msg({"type": MSG_AUTH_SUCCESS})
+                        return ok
 
                     if _check_authorized(driver, navigate=True):
                         state = _page_state(driver)
@@ -441,15 +466,40 @@ def main(argv: list[str] | None = None) -> int:
                 _emit_log(f"interactive_auth: entering phone login, url={state['url']} title={state['title']}")
                 phone_input = fast_find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS)
                 if phone_input is None:
-                    switch_el = find_element_any(driver, AUTH_PHONE_SWITCH_SELECTORS)
-                    if switch_el:
-                        try:
-                            _click_element(driver, switch_el, "phone-switch")
-                            time.sleep(2)
-                        except Exception:
-                            pass
+                    switched = False
+                    try:
+                        switched = bool(click_login_mode_switch(driver))
+                        if switched:
+                            _emit_log("interactive_auth: switched to phone via shared switch helper")
+                    except Exception:
+                        switched = False
+                    if not switched:
+                        switch_el = find_element_any(driver, AUTH_PHONE_SWITCH_SELECTORS)
+                        if switch_el:
+                            try:
+                                _click_element(driver, switch_el, "phone-switch")
+                                switched = True
+                            except Exception:
+                                pass
+                    if switched:
+                        time.sleep(2)
 
                 phone_input = find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=8)
+                if phone_input is None:
+                    retry_switched = False
+                    try:
+                        state_now = get_auth_page_state(driver, element_timeout=0)
+                    except Exception:
+                        state_now = "unknown"
+                    if state_now in {"qr", "qr_scanned", "login", "unknown"}:
+                        try:
+                            retry_switched = bool(click_login_mode_switch(driver))
+                            if retry_switched:
+                                _emit_log("interactive_auth: retried phone switch after first miss")
+                                phone_input = find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=6)
+                        except Exception:
+                            retry_switched = False
+
                 if phone_input is None:
                     state = _page_state(driver)
                     _emit_log(f"interactive_auth: phone input not found after switch, url={state['url']} title={state['title']}")
@@ -539,7 +589,92 @@ def main(argv: list[str] | None = None) -> int:
                                 elif retry_state.get("state") == "button":
                                     _emit_log("interactive_auth: send code button appeared later after code_input")
                                 else:
-                                    _emit_log("interactive_auth: no countdown/button after code_input; continue waiting for user code")
+                                    fallback_clicked = False
+                                    try:
+                                        fallback_clicked = bool(driver.execute_script("""
+                                            const texts = ['发送验证码', '获取验证码', '重新发送', '重新获取验证码'];
+                                            const nodes = Array.from(document.querySelectorAll('button, [role="button"], a, span, div'));
+                                            for (const el of nodes) {
+                                                const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                                                if (!txt) continue;
+                                                if (!texts.some(t => txt.includes(t))) continue;
+                                                if (txt.includes('秒后')) continue;
+                                                const rect = el.getBoundingClientRect();
+                                                if (rect.width <= 0 || rect.height <= 0) continue;
+                                                const style = window.getComputedStyle(el);
+                                                if (style.display === 'none' || style.visibility === 'hidden') continue;
+                                                try {
+                                                    el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window }));
+                                                    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                                    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                                                    el.click();
+                                                    return true;
+                                                } catch (e) {}
+                                            }
+                                            return false;
+                                        """))
+                                    except Exception:
+                                        fallback_clicked = False
+
+                                    if not fallback_clicked:
+                                        try:
+                                            fallback_clicked = bool(driver.execute_script("""
+                                                const selectors = [
+                                                    'div.base-code-box-count',
+                                                    '.base-code-box-count',
+                                                    '[data-test="send-code"]',
+                                                    '[data-test="login-send-code-btn"]',
+                                                    'button.ud__button--link'
+                                                ];
+                                                const isVisible = (el) => {
+                                                    if (!el) return false;
+                                                    const rect = el.getBoundingClientRect();
+                                                    if (rect.width <= 0 || rect.height <= 0) return false;
+                                                    const style = window.getComputedStyle(el);
+                                                    return style.display !== 'none' && style.visibility !== 'hidden';
+                                                };
+                                                for (const sel of selectors) {
+                                                    const nodes = Array.from(document.querySelectorAll(sel));
+                                                    for (const el of nodes) {
+                                                        if (!isVisible(el)) continue;
+                                                        const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                                                        if (txt && txt.includes('秒后')) continue;
+                                                        try {
+                                                            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                                                            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                                                            el.click();
+                                                            return true;
+                                                        } catch (e) {}
+                                                    }
+                                                }
+                                                return false;
+                                            """))
+                                            if fallback_clicked:
+                                                _emit_log("interactive_auth: clicked explicit resend candidate after code_input")
+                                        except Exception:
+                                            fallback_clicked = False
+
+                                    if not fallback_clicked:
+                                        try:
+                                            next_btn_retry = find_element_any(driver, AUTH_PHONE_NEXT_BUTTON, timeout=1)
+                                        except Exception:
+                                            next_btn_retry = None
+                                        if next_btn_retry is not None:
+                                            if _click_element(driver, next_btn_retry, "phone-next-retry"):
+                                                fallback_clicked = True
+                                                _emit_log("interactive_auth: retried phone-next to trigger code send")
+
+                                    if fallback_clicked:
+                                        _emit_log("interactive_auth: clicked resend text fallback after code_input")
+                                        retry_state2 = wait_for_send_code_ready_state(driver, timeout=6)
+                                        if retry_state2.get("state") == "countdown":
+                                            _emit_log(f"interactive_auth: resend fallback confirmed by countdown={retry_state2.get('text', '')!r}")
+                                        elif retry_state2.get("state") == "button":
+                                            _emit_log("interactive_auth: resend fallback clicked but still got button state")
+                                        else:
+                                            _emit_log("interactive_auth: resend fallback not confirmed by countdown/button")
+                                    else:
+                                        _emit_log("interactive_auth: no countdown/button after code_input; continue waiting for user code")
                             except Exception:
                                 pass
                         else:
