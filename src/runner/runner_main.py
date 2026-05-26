@@ -316,11 +316,17 @@ def main(argv: list[str] | None = None) -> int:
                     _emit_log(f"interactive_auth: initial state url={state['url']} title={state['title']}")
 
                     if _check_authorized(driver, navigate=False):
-                        send_msg({"type": MSG_AUTH_SUCCESS})
-                        return True
+                        _emit_log("interactive_auth: already authorized, reset to QR for re-authorization")
+                        if _go_back_to_qr(driver):
+                            state = _page_state(driver)
+                            _emit_log(f"interactive_auth: reset to QR done, continue interactive auth, url={state['url']} title={state['title']}")
+                        else:
+                            _emit_log("interactive_auth: reset to QR failed, keep current authorized state")
+                            send_msg({"type": MSG_AUTH_SUCCESS})
+                            return True
 
                     # Only look for authorize button if page is still on daily host
-                    current_state = get_auth_page_state(driver)
+                    current_state = get_auth_page_state(driver, element_timeout=0)
                     if current_state == "daily":
                         try:
                             auth_btn = WebDriverWait(driver, 3).until(
@@ -332,6 +338,17 @@ def main(argv: list[str] | None = None) -> int:
                             _emit_log(f"interactive_auth: clicked authorize button, url={state['url']} title={state['title']}")
                         except Exception:
                             pass
+                    elif current_state in {"phone", "login"}:
+                        try:
+                            qr_switch = find_element_any(driver, AUTH_QR_SWITCH_SELECTORS, timeout=2)
+                            if qr_switch is not None:
+                                _click_element(driver, qr_switch, "switch-to-qr")
+                                time.sleep(1)
+                                _emit_log("interactive_auth: switched to QR mode from phone/login state")
+                            else:
+                                _emit_log(f"interactive_auth: qr switch not found, keep current state={current_state}")
+                        except Exception:
+                            pass
                     else:
                         _emit_log(f"interactive_auth: skip authorize button lookup, current_state={current_state}")
 
@@ -339,7 +356,7 @@ def main(argv: list[str] | None = None) -> int:
                     try:
                         WebDriverWait(driver, 20).until(
                             lambda d: (
-                                get_auth_page_state(d) in {"authorized", "qr", "qr_scanned", "phone", "login", "authen"}
+                                get_auth_page_state(d, element_timeout=0) in {"authorized", "qr", "qr_scanned", "phone", "login", "authen"}
                             )
                         )
                     except TimeoutException:
@@ -349,6 +366,7 @@ def main(argv: list[str] | None = None) -> int:
                     state = _page_state(driver)
                     _emit_log(f"interactive_auth: waiting result url={state['url']} title={state['title']}")
 
+                    switched_to_phone = False
                     qr_el = fast_find_element_any(driver, AUTH_QR_SELECTORS)
                     if qr_el is None:
                         qr_el = find_element_any(driver, AUTH_QR_SELECTORS, timeout=2)
@@ -374,11 +392,17 @@ def main(argv: list[str] | None = None) -> int:
                             t = msg.get("type", "")
                             if t == MSG_SWITCH_PHONE:
                                 _emit_log("interactive_auth: received switch_phone while waiting for QR scan")
+                                switched_to_phone = True
                                 break
                             if t == MSG_CANCEL:
                                 _emit_log("interactive_auth: received cancel while waiting for QR scan")
                                 return False
                             _emit_log(f"interactive_auth: ignored message while waiting for QR scan: {t}")
+
+                    if switched_to_phone:
+                        state = _page_state(driver)
+                        _emit_log(f"interactive_auth: switch_phone confirmed, entering phone login directly, url={state['url']} title={state['title']}")
+                        return _phone_login(driver)
 
                     if _check_authorized(driver, navigate=False):
                         state = _page_state(driver)
@@ -415,13 +439,15 @@ def main(argv: list[str] | None = None) -> int:
             def _phone_login(driver):
                 state = _page_state(driver)
                 _emit_log(f"interactive_auth: entering phone login, url={state['url']} title={state['title']}")
-                switch_el = find_element_any(driver, AUTH_PHONE_SWITCH_SELECTORS)
-                if switch_el:
-                    try:
-                        _click_element(driver, switch_el, "phone-switch")
-                        time.sleep(2)
-                    except Exception:
-                        pass
+                phone_input = fast_find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS)
+                if phone_input is None:
+                    switch_el = find_element_any(driver, AUTH_PHONE_SWITCH_SELECTORS)
+                    if switch_el:
+                        try:
+                            _click_element(driver, switch_el, "phone-switch")
+                            time.sleep(2)
+                        except Exception:
+                            pass
 
                 phone_input = find_element_any(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=8)
                 if phone_input is None:
@@ -475,6 +501,37 @@ def main(argv: list[str] | None = None) -> int:
                                 send_msg({"type": MSG_SEND_CODE_TRIGGERED})
                         elif send_code_state.get("state") == "code_input":
                             _emit_log("interactive_auth: code input visible without explicit send code button, proceeding")
+                            try:
+                                send_code_btn2 = find_send_code_element(driver, timeout=2)
+                            except Exception:
+                                send_code_btn2 = None
+                            clicked = False
+                            if send_code_btn2 is not None:
+                                clicked = _click_element(driver, send_code_btn2, "send-code-fallback")
+                            if not clicked:
+                                try:
+                                    clicked = bool(driver.execute_script("""
+                                        const texts = ['发送验证码', '获取验证码', '重新发送'];
+                                        const nodes = Array.from(document.querySelectorAll('button, [role="button"], span, a, div'));
+                                        for (const el of nodes) {
+                                            const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                                            if (!txt) continue;
+                                            if (!texts.some(t => txt.includes(t))) continue;
+                                            const rect = el.getBoundingClientRect();
+                                            if (rect.width <= 0 || rect.height <= 0) continue;
+                                            const style = window.getComputedStyle(el);
+                                            if (style.display === 'none' || style.visibility === 'hidden') continue;
+                                            el.click();
+                                            return true;
+                                        }
+                                        return false;
+                                    """))
+                                except Exception:
+                                    clicked = False
+                            if clicked:
+                                _emit_log("interactive_auth: send code clicked via fallback when code_input is visible")
+                            if interactive:
+                                send_msg({"type": MSG_SEND_CODE_TRIGGERED})
                         else:
                             _emit_log("interactive_auth: neither code input, countdown nor send code button found yet")
                         state = _page_state(driver)
