@@ -277,6 +277,7 @@ class AuthWorker(QThread):
             if os.name == "nt":
                 subprocess.run(["taskkill", "/F", "/IM", "msedge.exe"], capture_output=True)
                 subprocess.run(["taskkill", "/F", "/IM", "msedgedriver.exe"], capture_output=True)
+                time.sleep(1)
 
             # Cleanly remove any previous profile
             import shutil
@@ -303,19 +304,46 @@ class AuthWorker(QThread):
             opts.add_argument("--enable-logging")
             opts.add_argument("--v=1")
             opts.add_argument("--disable-blink-features=AutomationControlled")
+            opts.add_argument("--inprivate")
             opts.add_argument(f"--user-data-dir={profile_dir}")
 
             service = Service(executable_path=self.driver_path)
             driver = webdriver.Edge(service=service, options=opts)
             self._driver = driver
 
+            try:
+                driver.delete_all_cookies()
+                driver.execute_cdp_cmd("Network.clearBrowserCache", {})
+                driver.execute_cdp_cmd("Network.clearBrowserCookies", {})
+            except Exception:
+                pass
+
+            Log.info("AuthWorker: navigating to about:blank to clear any cached state...")
+            try:
+                driver.get("about:blank")
+                time.sleep(0.5)
+            except Exception:
+                pass
             Log.info("AuthWorker: navigating to daily report URL...")
             driver.get(DAILY_REPORT_URL)
 
-            wait_auth_page_ready(driver, timeout=8)
+            wait_auth_page_ready(driver, timeout=15)
 
             final_url = (driver.current_url or "").lower()
             Log.info(f"AuthWorker: final URL type: {self._classify_url(final_url)}")
+
+            if "/open-apis/authen/v1/index" in final_url:
+                Log.info("AuthWorker: on authen landing page, waiting for redirect...")
+                try:
+                    from selenium.webdriver.support.ui import WebDriverWait
+                    WebDriverWait(driver, 15).until(
+                        lambda d: is_authorized(d) or "daily" in (d.current_url or "").lower()
+                    )
+                    if is_authorized(driver):
+                        self.auth_success.emit()
+                        return
+                except Exception:
+                    pass
 
             if is_authorized(driver):
                 Log.info("AuthWorker: current page already satisfies authorization")
@@ -331,17 +359,28 @@ class AuthWorker(QThread):
 
             wait_auth_page_ready(driver, timeout=5)
 
+            skip_authorized_check = False
             while True:
                 Log.info("AuthWorker: main auth loop iteration")
                 if self._cancel:
                     Log.info("AuthWorker: cancelled in main loop")
                     return
                 time.sleep(0.5)
-                state = get_auth_page_state(driver)
+
+                with self._lock:
+                    if self._restart:
+                        self._restart = False
+                        self._use_phone = False
+                        skip_authorized_check = True
+                        Log.info("AuthWorker: restarting auth loop from QR")
+
+                state = get_auth_page_state(driver) if not skip_authorized_check else None
+                skip_authorized_check = False
                 if state == "authorized":
                     Log.info("AuthWorker: authorized detected in main loop")
                     self.auth_success.emit()
                     return
+
                 Log.info("AuthWorker: scanning for QR...")
                 qr_element = fast_find_any(driver, AUTH_QR_SELECTORS)
                 if qr_element:
@@ -350,12 +389,6 @@ class AuthWorker(QThread):
                     if qr_element:
                         self.qr_ready.emit(qr_element.screenshot_as_png)
                         self._wait_for_auth_or_switch(driver)
-                        with self._lock:
-                            if self._restart:
-                                self._restart = False
-                                self._use_phone = False
-                                Log.info("AuthWorker: restarting auth loop from QR")
-                                continue
                         return
                     if is_authorized(driver):
                         Log.info("AuthWorker: auth completed during QR wait")
@@ -412,10 +445,17 @@ class AuthWorker(QThread):
             with self._lock:
                 if self._use_phone:
                     break
+                if self._switch_to_qr:
+                    self._switch_to_qr = False
+                    return
             if self._cancel:
                 return
-            time.sleep(1)
+            time.sleep(0.3)
             try:
+                current = (driver.current_url or "").lower()
+                if "/open-apis/authen/v1/index" in current:
+                    Log.info("AuthWorker: auth landing URL detected, waiting for redirect...")
+                    continue
                 state = get_auth_page_state(driver, element_timeout=0)
                 if state == "qr_scanned":
                     Log.info("AuthWorker: qr scanned, waiting for redirect/authorization...")
@@ -612,16 +652,23 @@ class AuthWorker(QThread):
             self.auth_error.emit("Login timed out. Please try again.")
 
     def _go_back_to_qr(self, driver):
-        """Clear storage and reload auth page to show QR by default. Sets _restart flag so outer loop re-enters auth flow."""
-        Log.info("AuthWorker: clearing storage and reloading for QR login")
+        """Clear cookies/storage and reload auth page to show QR by default. Sets _restart flag so outer loop re-enters auth flow."""
+        Log.info("AuthWorker: clearing cookies/storage and reloading for QR login")
         qr_element = reset_to_qr_page(driver, DAILY_REPORT_URL, qr_timeout=10)
         if qr_element:
             Log.info("AuthWorker: back to QR login")
             self.qr_ready.emit(qr_element.screenshot_as_png)
             with self._lock:
                 self._restart = True
-                Log.info("AuthWorker: _restart set to True")
         else:
+            Log.warn("AuthWorker: QR not found on first reload attempt, retrying once")
+            qr_element = reset_to_qr_page(driver, DAILY_REPORT_URL, qr_timeout=10)
+            if qr_element:
+                Log.info("AuthWorker: back to QR login after retry")
+                self.qr_ready.emit(qr_element.screenshot_as_png)
+                with self._lock:
+                    self._restart = True
+                return
             self.auth_error.emit("Could not find QR code after page reload.")
         Log.info("AuthWorker: _go_back_to_qr returning")
 

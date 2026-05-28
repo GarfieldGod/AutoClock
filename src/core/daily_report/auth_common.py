@@ -82,11 +82,9 @@ AUTH_AGREE_BUTTON = [
 ]
 
 AUTH_AUTHORIZED_SELECTORS = [
-    (By.ID, "task"),
-    (By.ID, "proList"),
     (By.XPATH, "//*[contains(text(), '新增')]"),
     (By.XPATH, "//*[contains(text(), '保存')]"),
-    (By.ID, "date"),
+    (By.ID, "proList"),
 ]
 
 MSG_QR_READY = "qr_ready"
@@ -233,12 +231,21 @@ def get_auth_page_state(driver, element_timeout=1):
         host = ""
         path = ""
 
-    if host in {"accounts.feishu.cn", "open.feishu.cn"} and path == "/open-apis/authen/v1/index":
+    if host in {"accounts.feishu.cn", "open.feishu.cn"} and "/open-apis/authen/v1/index" in path:
+        return "authorized"
+
+    if "/open-apis/authen/v1/index" in current:
         return "authorized"
 
     finder = find_element_any if element_timeout and element_timeout > 0 else fast_find_element_any
 
     if is_daily_url(current):
+        qr_el = finder(driver, AUTH_QR_SELECTORS) if finder is fast_find_element_any else finder(driver, AUTH_QR_SELECTORS, timeout=element_timeout)
+        if qr_el is not None:
+            return "qr"
+        phone_el = finder(driver, AUTH_PHONE_INPUT_SELECTORS) if finder is fast_find_element_any else finder(driver, AUTH_PHONE_INPUT_SELECTORS, timeout=element_timeout)
+        if phone_el is not None:
+            return "phone"
         auth_el = finder(driver, AUTH_AUTHORIZED_SELECTORS) if finder is fast_find_element_any else finder(driver, AUTH_AUTHORIZED_SELECTORS, timeout=element_timeout)
         if auth_el is not None:
             return "authorized"
@@ -270,6 +277,10 @@ def is_authorized(driver):
 
 
 def reset_to_qr_page(driver, daily_report_url, qr_timeout=10):
+    try:
+        driver.delete_all_cookies()
+    except Exception:
+        pass
     try:
         driver.execute_script("""
             try { sessionStorage.clear(); } catch(e) {}

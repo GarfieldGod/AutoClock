@@ -177,6 +177,12 @@ class DailyAuthDialog(QDialog):
         self._qr_image.hide()
         if self._preferred_page != "phone":
             self.stack.setCurrentIndex(0)
+        from PyQt5.QtCore import QTimer
+        self._pending_qr_switch = True
+        QTimer.singleShot(15000, self._release_pending_qr_switch)
+
+    def _release_pending_qr_switch(self):
+        self._pending_qr_switch = False
 
     def show_qr_code(self, png_bytes):
         self._pending_qr_switch = False
@@ -254,13 +260,13 @@ class DailyAuthDialog(QDialog):
 
     def _on_switch_phone_click(self):
         self._preferred_page = "phone"
+        self._pending_qr_switch = False
         if self._on_switch_phone_cb:
             self._on_switch_phone_cb()
         self.show_phone_input()
 
     def _on_switch_qr_click(self):
         self._preferred_page = "qr"
-        self._pending_qr_switch = True
         self.show_qr_loading()
         if self._on_switch_qr_cb:
             self._on_switch_qr_cb()
